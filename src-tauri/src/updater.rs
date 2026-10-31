@@ -478,10 +478,75 @@ pub fn preferred_kinds() -> &'static [&'static str] {
 }
 
 /// 从 Release 的资产里挑出本平台该下的那个。
+/// 当前机器架构在发行包文件名里的常见写法。
+///
+/// 同一个 x86_64 在三个平台有三种叫法：Windows 的 `x64`、Linux 的 `amd64`、
+/// 以及 Rust triple 里的 `x86_64`。少认一种就会「明明有包却说没有」。
+fn arch_tokens() -> &'static [&'static str] {
+    #[cfg(target_arch = "x86_64")]
+    {
+        &["x86_64", "x86-64", "x64", "amd64"]
+    }
+    #[cfg(target_arch = "aarch64")]
+    {
+        &["aarch64", "arm64"]
+    }
+    #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
+    {
+        &[]
+    }
+}
+
+/// 与当前架构**相对**的那种架构的写法，用来把别人的包排除掉。
+fn other_arch_tokens() -> &'static [&'static str] {
+    #[cfg(target_arch = "x86_64")]
+    {
+        &["aarch64", "arm64"]
+    }
+    #[cfg(target_arch = "aarch64")]
+    {
+        &["x86_64", "x86-64", "x64", "amd64"]
+    }
+    #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
+    {
+        &[]
+    }
+}
+
+/// 挑一个安装包。
+///
+/// 先按平台偏好的类型排序（Windows 优先 NSIS 而非便携 zip），再在同类里按架构筛 ——
+/// 只看类型是不够的：macOS 每次发两个 dmg（arm64 + x64），
+/// 不筛架构的话 Intel 机器有相当概率拿到 arm64 那个，装上打不开。
 pub fn pick_asset(assets: &[ReleaseAsset]) -> Option<&ReleaseAsset> {
-    preferred_kinds()
-        .iter()
-        .find_map(|kind| assets.iter().find(|a| a.kind == *kind))
+    let mine = arch_tokens();
+    let theirs = other_arch_tokens();
+    let lower = |a: &ReleaseAsset| a.name.to_ascii_lowercase();
+    let has = |a: &ReleaseAsset, toks: &[&str]| {
+        let n = lower(a);
+        toks.iter().any(|t| n.contains(t))
+    };
+
+    for kind in preferred_kinds() {
+        let same_kind: Vec<&ReleaseAsset> = assets.iter().filter(|a| a.kind == *kind).collect();
+        let Some(first) = same_kind.first() else {
+            continue;
+        };
+        // 1) 文件名里明确写了本机架构
+        if let Some(hit) = same_kind.iter().find(|a| has(a, mine)) {
+            return Some(hit);
+        }
+        // 2) 没写架构的（通用包），或者架构写法我们一个都不认识
+        if let Some(hit) = same_kind.iter().find(|a| !has(a, theirs)) {
+            return Some(hit);
+        }
+        // 3) 同类里全是别的架构 —— 宁可报「没有适用包」，也不要让用户下载一个装不上的包
+        if !theirs.is_empty() {
+            continue;
+        }
+        return Some(first);
+    }
+    None
 }
 
 /// 下载安装包。返回实际生效的镜像名。
@@ -720,6 +785,74 @@ mod tests {
         assert_eq!(asset_kind("Convy_0.1.0_x64_en-US.MSI"), "msi");
         assert_eq!(asset_kind("convy.zip"), "zip");
         assert_eq!(asset_kind("latest.json"), "other");
+    }
+
+    fn asset(name: &str) -> ReleaseAsset {
+        ReleaseAsset {
+            name: name.to_string(),
+            url: format!("https://example.invalid/{name}"),
+            size: 1,
+            kind: asset_kind(name).to_string(),
+        }
+    }
+
+    /// v1.2.0 的真实产物名，直接拿真数据验选包
+    fn v120_assets() -> Vec<ReleaseAsset> {
+        [
+            "Convy-1.2.0-1.x86_64.rpm",
+            "Convy-linux-x86_64-bin.tar.gz",
+            "Convy-portable-win64.zip",
+            "Convy_1.2.0_aarch64.dmg",
+            "Convy_1.2.0_amd64.AppImage",
+            "Convy_1.2.0_amd64.deb",
+            "Convy_1.2.0_x64-setup.exe",
+            "Convy_1.2.0_x64.dmg",
+            "Convy_1.2.0_x64_en-US.msi",
+        ]
+        .iter()
+        .map(|n| asset(n))
+        .collect()
+    }
+
+    #[test]
+    fn picked_asset_matches_current_arch() {
+        let assets = v120_assets();
+        let picked = pick_asset(&assets).expect("真实产物里应当能挑到一个包");
+        let name = picked.name.to_ascii_lowercase();
+        for token in other_arch_tokens() {
+            assert!(
+                !name.contains(token),
+                "挑到了别的架构的包：{}（本机架构 {:?}）",
+                picked.name,
+                arch_tokens()
+            );
+        }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_prefers_nsis_installer() {
+        let assets = v120_assets();
+        assert_eq!(
+            pick_asset(&assets).unwrap().name,
+            "Convy_1.2.0_x64-setup.exe"
+        );
+    }
+
+    #[cfg(target_arch = "x86_64")]
+    #[test]
+    fn foreign_arch_only_yields_none() {
+        // 只有 arm64 包时，宁可报「没有适用包」，也不能让 Intel 机器下回来一个装不上的
+        let only_arm = vec![asset("Convy-1.2.0-aarch64-portable.zip")];
+        assert!(pick_asset(&only_arm).is_none());
+    }
+
+    #[test]
+    fn arch_less_asset_is_still_picked() {
+        // 名字里不带架构的通用包，不能被架构筛选误杀
+        let mut generic = asset("Convy_1.2.0_universal.bin");
+        generic.kind = preferred_kinds()[0].to_string();
+        assert!(pick_asset(&[generic]).is_some());
     }
 
     #[test]
