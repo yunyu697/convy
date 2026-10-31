@@ -108,7 +108,7 @@ pub async fn run_one(app: AppHandle, state: Arc<AppState>, id: String) {
     let id_prog = id.clone();
     let last = Arc::new(StdMutex::new(0.0f32));
     let on_progress: runner::ProgressFn = Arc::new(move |p, detail| {
-        let mut l = last.lock().unwrap();
+        let mut l = crate::lock_ok(last.as_ref());
         if p.is_nan() {
             drop(l);
             let _ = app_prog.emit(
@@ -175,9 +175,10 @@ pub async fn run_one(app: AppHandle, state: Arc<AppState>, id: String) {
             break;
         } else {
             last_err = if o.stderr.trim().is_empty() {
-                format!("转换失败（退出码 {:?}）", o.exit_code)
+                format!("转换失败（退出码 {:?}），引擎没有给出任何输出", o.exit_code)
             } else {
-                tail(&o.stderr, 600)
+                // 翻译成中文说明，但把引擎原文附在后面 —— 排错时不能只靠猜
+                crate::errors::describe(&o.stderr, 600)
             };
         }
 
@@ -197,7 +198,7 @@ pub async fn run_one(app: AppHandle, state: Arc<AppState>, id: String) {
 
     pid_tracker.abort();
     state.active.fetch_sub(1, Ordering::Relaxed);
-    state.cancels.lock().unwrap().remove(&id);
+    crate::lock_ok(&state.cancels).remove(&id);
     state.running.lock().await.remove(&id);
 
     let mut jobs = state.jobs.lock().await;
@@ -256,13 +257,4 @@ async fn build_plan(
     force_encoder: Option<&str>,
 ) -> Result<Plan, String> {
     engines::plan_for(engines, job, options, output, force_encoder).await
-}
-
-fn tail(s: &str, n: usize) -> String {
-    let chars: Vec<char> = s.trim().chars().collect();
-    if chars.len() <= n {
-        s.trim().to_string()
-    } else {
-        format!("…{}", chars[chars.len() - n..].iter().collect::<String>())
-    }
 }

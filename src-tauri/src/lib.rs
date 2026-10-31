@@ -10,6 +10,7 @@
 
 pub mod commands;
 pub mod engines;
+pub mod errors;
 pub mod formats;
 pub mod history;
 pub mod import;
@@ -46,16 +47,26 @@ pub struct AppState {
     pub engines_ready: AtomicBool,
 }
 
+/// 取标准库互斥锁，容忍中毒。
+///
+/// 某个线程持锁时 panic，锁会被标记为中毒（poisoned）。数据本身通常仍然可用，
+/// 最坏情况是某个字段停在中间状态。但如果直接 `unwrap()`，之后**每一次**取锁都会
+/// 继续 panic —— 后台探测线程出一次事，界面就变成「点什么都没反应」，而且没有任何提示。
+/// 所以这里选择恢复而不是继续炸。
+pub(crate) fn lock_ok<T>(m: &StdMutex<T>) -> std::sync::MutexGuard<'_, T> {
+    m.lock().unwrap_or_else(|e| e.into_inner())
+}
+
 impl AppState {
     pub(crate) fn engines_snapshot(&self) -> Engines {
-        self.engines.lock().unwrap().clone()
+        lock_ok(&self.engines).clone()
     }
     pub(crate) fn settings_snapshot(&self) -> Settings {
-        self.settings.lock().unwrap().clone()
+        lock_ok(&self.settings).clone()
     }
     pub(crate) fn max_parallel(&self) -> usize {
-        let g = &self.settings.lock().unwrap().global;
-        (g.concurrent_jobs as usize).clamp(1, 8)
+        let g = lock_ok(&self.settings);
+        (g.global.concurrent_jobs as usize).clamp(1, 8)
     }
 }
 
@@ -142,6 +153,16 @@ pub fn compute_enc_chain(engines: &Engines, options: &ConvOptions, target: &str)
 
 pub fn run() {
     tauri::Builder::default()
+        // 单实例必须是**第一个**注册的插件，否则等前面插件的初始化跑完才做检查，
+        // 第二个实例已经动过 settings.json 了。
+        // 第二次启动时不再开新窗口：把已有窗口叫到前面来。
+        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+            if let Some(win) = app.get_webview_window("main") {
+                let _ = win.unminimize();
+                let _ = win.show();
+                let _ = win.set_focus();
+            }
+        }))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
@@ -196,13 +217,13 @@ pub fn run() {
                     engines.pandoc,
                     engines.h264_chain
                 ));
-                *detect_state.engines.lock().unwrap() = engines;
+                *lock_ok(&detect_state.engines) = engines;
                 detect_state.engines_ready.store(true, Ordering::SeqCst);
                 let _ = app_handle.emit("engines:changed", ());
 
                 // 首次启动自动下载核心引擎（如 ffmpeg）。受“自动检查更新”开关控制；
                 // 放在探测完成之后，否则空快照会误判“未安装”而重复下载。
-                let auto = detect_state.settings.lock().unwrap().global.auto_check_update;
+                let auto = lock_ok(&detect_state.settings).global.auto_check_update;
                 if auto {
                     let st2 = detect_state.clone();
                     let app2 = app_handle.clone();
@@ -221,7 +242,7 @@ pub fn run() {
                             if !is_managed {
                                 continue;
                             }
-                            let snapshot = st2.engines.lock().unwrap().clone();
+                            let snapshot = lock_ok(&st2.engines).clone();
                             let installed = mgr
                                 .list(&snapshot)
                                 .iter()
@@ -257,6 +278,8 @@ pub fn run() {
             commands::system::reveal_output,
             commands::system::open_path,
             commands::system::open_url,
+            commands::system::log_frontend_error,
+            commands::system::open_log_file,
             commands::settings::get_settings,
             commands::settings::save_settings,
             commands::settings::list_presets,
@@ -277,7 +300,7 @@ pub fn run() {
 }
 
 #[allow(dead_code)]
-fn log(msg: &str) {
+pub(crate) fn log(msg: &str) {
     use std::io::Write;
     println!("[convy] {}", msg);
     let path = std::env::temp_dir().join("convy.log");

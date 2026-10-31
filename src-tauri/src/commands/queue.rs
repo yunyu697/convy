@@ -120,7 +120,7 @@ pub async fn set_target(
 
 #[tauri::command]
 pub async fn remove_job(id: String, state: State<'_, Arc<AppState>>) -> Result<(), String> {
-    if let Some(flag) = state.cancels.lock().unwrap().get(&id) {
+    if let Some(flag) = crate::lock_ok(&state.cancels).get(&id) {
         flag.store(true, Ordering::Relaxed);
     }
     let mut jobs = state.jobs.lock().await;
@@ -159,7 +159,7 @@ pub async fn retry_job(id: String, state: State<'_, Arc<AppState>>) -> Result<Jo
 
 #[tauri::command]
 pub async fn cancel_job(id: String, state: State<'_, Arc<AppState>>) -> Result<(), String> {
-    if let Some(flag) = state.cancels.lock().unwrap().get(&id) {
+    if let Some(flag) = crate::lock_ok(&state.cancels).get(&id) {
         flag.store(true, Ordering::Relaxed);
     }
     if let Some(pid) = state.running.lock().await.get(&id).copied() {
@@ -170,7 +170,7 @@ pub async fn cancel_job(id: String, state: State<'_, Arc<AppState>>) -> Result<(
 
 #[tauri::command]
 pub async fn set_overwrite(v: bool, state: State<'_, Arc<AppState>>) -> Result<(), String> {
-    state.settings.lock().unwrap().global.overwrite = v;
+    crate::lock_ok(&state.settings).global.overwrite = v;
     persist_settings(state.inner());
     Ok(())
 }

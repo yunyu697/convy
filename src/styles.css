@@ -3063,3 +3063,87 @@ code {
   min-width: 150px;
   justify-content: flex-end;
 }
+
+/* ---------------------------------------------------------------- 崩溃兜底
+   渲染期异常会把整棵树卸载，桌面应用没有「刷新」的退路，所以这一屏
+   必须自带出口：重新加载（任务在后端不会丢）+ 打开日志（交出错误现场）。 */
+
+.crash {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 32px;
+  overflow: auto;
+  background: var(--bg);
+  background-image: var(--bg-grad);
+  font-family: var(--font);
+}
+
+.crash__card {
+  width: min(720px, 100%);
+  padding: 32px 36px 26px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-l);
+  box-shadow: var(--shadow-3);
+}
+
+.crash__badge {
+  width: 34px;
+  height: 34px;
+  margin-bottom: 14px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: rgba(192, 57, 43, 0.12);
+  color: #c0392b;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.crash__title {
+  margin: 0 0 8px;
+  font-size: 19px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.crash__lead {
+  margin: 0 0 16px;
+  font-size: 13.5px;
+  line-height: 1.65;
+  color: var(--text-dim);
+}
+
+.crash__detail {
+  max-height: 220px;
+  margin: 0 0 18px;
+  padding: 12px 14px;
+  overflow: auto;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
+  color: var(--text-dim);
+  font-family: var(--mono);
+  font-size: 11.5px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+  user-select: text;
+}
+
+.crash__actions {
+  display: flex;
+  gap: 10px;
+}
+
+.crash__hint {
+  margin: 14px 0 0;
+  font-size: 11.5px;
+  color: var(--text-faint);
+}
+
+.crash__hint code {
+  font-family: var(--mono);
+}

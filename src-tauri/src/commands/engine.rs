@@ -202,7 +202,7 @@ pub fn rediscover_engines(app: &AppHandle, state: &Arc<AppState>) {
     let bundle = state.bundle_dir.clone();
     let managed = state.engine_manager.root.clone();
     let new_eng = Engines::detect(&bundle, &managed);
-    *state.engines.lock().unwrap() = new_eng;
+    *crate::lock_ok(&state.engines) = new_eng;
     state.engines_ready.store(true, Ordering::SeqCst);
     let _ = app.emit("engines:changed", ());
 }

@@ -434,6 +434,7 @@ impl EngineManager {
             Ok(o) => o,
             Err(e) => {
                 let _ = std::fs::remove_file(&tmp_archive);
+                clear_resume_meta(&tmp_archive);
                 let _ = std::fs::remove_dir_all(&staging);
                 return Err(e);
             }
@@ -449,6 +450,7 @@ impl EngineManager {
         cb("extract", 0.87, "正在解压…");
         extract(&tmp_archive, &staging, &spec.kind).map_err(|e| format!("解压失败：{}", e))?;
         let _ = std::fs::remove_file(&tmp_archive);
+        clear_resume_meta(&tmp_archive);
 
         // 发行包普遍多一层包装目录（如 ffmpeg-9.0.2-essentials_build/bin/…），
         // 先展平再定位可执行文件，否则清单里的相对路径永远对不上。
@@ -556,9 +558,11 @@ impl EngineManager {
                 Ok(o) => o,
                 Err(e) => {
                     let _ = std::fs::remove_file(&dest);
+                    clear_resume_meta(&dest);
                     return Err(e);
                 }
             };
+            clear_resume_meta(&dest);
 
             cb("done", 1.0, "安装包已保存到引擎目录");
             Ok(EngineUpdateResult {
@@ -861,6 +865,59 @@ async fn fetch_text(url: &str) -> Result<String, String> {
     Ok(String::from_utf8_lossy(&buf).to_string())
 }
 
+/// 断点续传的旁注：记录这份临时文件对应哪个 URL、服务器 ETag 与总长度。
+/// 中断后下次进来靠它判断「残留文件还能不能接着用」。
+#[derive(Debug, Default, serde::Serialize, serde::Deserialize)]
+struct ResumeMeta {
+    url: String,
+    etag: Option<String>,
+    total: Option<u64>,
+}
+
+/// 旁注文件路径：`<dest>.meta`。
+fn resume_meta_path(dest: &Path) -> PathBuf {
+    let mut s = dest.as_os_str().to_owned();
+    s.push(".meta");
+    PathBuf::from(s)
+}
+
+fn read_resume_meta(dest: &Path) -> Option<ResumeMeta> {
+    let text = std::fs::read_to_string(resume_meta_path(dest)).ok()?;
+    serde_json::from_str(&text).ok()
+}
+
+fn write_resume_meta(dest: &Path, meta: &ResumeMeta) {
+    if let Ok(text) = serde_json::to_string(meta) {
+        let _ = std::fs::write(resume_meta_path(dest), text);
+    }
+}
+
+/// 下载完成（校验通过、即将解压）后清掉旁注 —— 续传信息已经没用了。
+pub(crate) fn clear_resume_meta(dest: &Path) {
+    let _ = std::fs::remove_file(resume_meta_path(dest));
+}
+
+/// 该从第几个字节开始下。
+///
+/// 只有「临时文件存在、且旁注记录的 URL 与本次一致」才续传。
+/// 换了下载源（官方 ↔ 镜像）必须从 0 开始：两个源的包根本不是同一个文件。
+fn resume_offset(existing: u64, prev: Option<&ResumeMeta>, url: &str) -> u64 {
+    if existing > 0 && prev.is_some_and(|m| m.url == url) {
+        existing
+    } else {
+        0
+    }
+}
+
+/// 下载到本地，支持断点续传。
+///
+/// 为什么需要续传：FFmpeg 包 115 MB，国内网络下一次中断就得从 0 重来，
+/// 而失败一次往往还伴随着「再点一次」的犹豫。续传让第二次点击只补剩下的部分。
+///
+/// 两个必须守住的前提：
+/// 1. **换了下载源就不能续**。官方包和镜像包不是同一个文件，拼接只会得到一段
+///    谁也校验不过的垃圾，所以按 URL 判断，不同就丢弃重下。
+/// 2. **中断时保留临时文件**。只有校验失败或解压完成才删，否则续传无从谈起。
 async fn download_to_file(
     app: &AppHandle,
     url: &str,
@@ -877,23 +934,82 @@ async fn download_to_file(
         .build()
         .map_err(|e| format!("创建下载请求失败：{}", e))?;
 
-    let resp = client.get(url).send().await.map_err(|e| {
+    // ---- 判断能不能续传
+    let existing = std::fs::metadata(dest).map(|m| m.len()).unwrap_or(0);
+    let prev = read_resume_meta(dest);
+    let resume_from = resume_offset(existing, prev.as_ref(), url);
+    if existing > 0 && resume_from == 0 {
+        let _ = std::fs::remove_file(dest);
+    }
+
+    let mut req = client.get(url);
+    if resume_from > 0 {
+        req = req.header(reqwest::header::RANGE, format!("bytes={resume_from}-"));
+        if let Some(etag) = prev.as_ref().and_then(|m| m.etag.as_deref()) {
+            // 上游换版本时服务器会忽略 Range 直接回 200，
+            // 避免把旧包的前半段拼到新包上
+            req = req.header(reqwest::header::IF_RANGE, etag);
+        }
+    }
+
+    let resp = req.send().await.map_err(|e| {
         if e.is_timeout() {
             "下载超时：服务器长时间无响应".to_string()
         } else {
             format!("下载请求失败：{}", e)
         }
     })?;
-    if !resp.status().is_success() {
-        return Err(format!("下载失败，HTTP 状态 {}", resp.status()));
-    }
-    let total = resp.content_length().unwrap_or(0);
-    let mut file = tokio::fs::File::create(dest)
-        .await
-        .map_err(|e| e.to_string())?;
+
+    let status = resp.status();
+    let (offset, total, append) = match status.as_u16() {
+        // 206：服务器接受了 Range，接着写
+        206 => {
+            let len = resp.content_length().unwrap_or(0);
+            (resume_from, resume_from + len, true)
+        }
+        // 200：没接受 Range（不支持，或 If-Range 判定资源已变）→ 只能从头下
+        200 => (0, resp.content_length().unwrap_or(0), false),
+        // 416：本地残留比服务器上的还长，只能是坏文件
+        416 => {
+            let _ = std::fs::remove_file(dest);
+            clear_resume_meta(dest);
+            return Err("上次的临时文件与服务器不一致，已清除，请重新下载".to_string());
+        }
+        _ if !status.is_success() => {
+            return Err(format!("下载失败，HTTP 状态 {}", status.as_u16()));
+        }
+        _ => (0, resp.content_length().unwrap_or(0), false),
+    };
+
+    let etag = resp
+        .headers()
+        .get(reqwest::header::ETAG)
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_string());
+    write_resume_meta(
+        dest,
+        &ResumeMeta {
+            url: url.to_string(),
+            etag,
+            total: if total > 0 { Some(total) } else { None },
+        },
+    );
+
+    let mut file = if append {
+        tokio::fs::OpenOptions::new()
+            .append(true)
+            .open(dest)
+            .await
+            .map_err(|e| format!("无法继续写入临时文件：{}", e))?
+    } else {
+        tokio::fs::File::create(dest)
+            .await
+            .map_err(|e| e.to_string())?
+    };
+
+    let mut downloaded: u64 = offset;
+    let mut last_emit = offset;
     let mut stream = resp.bytes_stream();
-    let mut downloaded: u64 = 0;
-    let mut last_emit = 0u64;
     while let Some(chunk) = stream.next().await {
         let chunk = chunk.map_err(|e| format!("下载中断：{}", e))?;
         file.write_all(&chunk).await.map_err(|e| e.to_string())?;
@@ -906,11 +1022,24 @@ async fn download_to_file(
                     "engine:progress",
                     serde_json::json!({ "id": dest, "phase": "download", "progress": p }),
                 );
-                cb("download", p, &format!("下载中 {:.0}%", p * 100.0));
+                let label = if offset > 0 {
+                    format!("续传中 {:.0}%", p * 100.0)
+                } else {
+                    format!("下载中 {:.0}%", p * 100.0)
+                };
+                cb("download", p, &label);
             }
         }
     }
     file.flush().await.map_err(|e| e.to_string())?;
+
+    // 没下完就把临时文件留着 —— 下次点重试能接着下，而不是从 0 开始
+    if total > 0 && downloaded < total {
+        return Err(format!(
+            "下载中断（已收到 {:.0}%），再次点击下载会从断点继续",
+            downloaded as f32 / total as f32 * 100.0
+        ));
+    }
     Ok(())
 }
 
@@ -970,4 +1099,52 @@ fn extract_tar(archive: &Path, dest: &Path, comp: &str) -> Result<(), String> {
         ar.unpack(dest).map_err(|e| e.to_string())?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn meta(url: &str) -> ResumeMeta {
+        ResumeMeta {
+            url: url.to_string(),
+            etag: Some("\"abc\"".into()),
+            total: Some(115 * 1024 * 1024),
+        }
+    }
+
+    #[test]
+    fn resumes_only_when_source_matches() {
+        let url = "https://www.gyan.dev/ffmpeg.zip";
+        // 同一个源、文件有内容 → 接着下
+        assert_eq!(resume_offset(4096, Some(&meta(url)), url), 4096);
+        // 换了源（官方 ↔ 镜像）→ 必须重下，否则拼出来的是两个包的混合体
+        assert_eq!(
+            resume_offset(4096, Some(&meta("https://mirror.example/ffmpeg.zip")), url),
+            0
+        );
+        // 没有旁注（老版本残留 / 首次下载）→ 重下
+        assert_eq!(resume_offset(4096, None, url), 0);
+        // 文件是空的 → 没什么可续
+        assert_eq!(resume_offset(0, Some(&meta(url)), url), 0);
+    }
+
+    #[test]
+    fn resume_meta_survives_roundtrip() {
+        let dir = std::env::temp_dir().join(format!("convy-resume-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let dest = dir.join("_download.bin");
+
+        write_resume_meta(&dest, &meta("https://example.com/a.zip"));
+        let back = read_resume_meta(&dest).expect("旁注应能读回");
+        assert_eq!(back.url, "https://example.com/a.zip");
+        assert_eq!(back.etag.as_deref(), Some("\"abc\""));
+        assert_eq!(back.total, Some(115 * 1024 * 1024));
+
+        // 清掉之后就不能再续了
+        clear_resume_meta(&dest);
+        assert!(read_resume_meta(&dest).is_none());
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

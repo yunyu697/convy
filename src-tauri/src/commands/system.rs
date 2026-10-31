@@ -76,3 +76,26 @@ pub fn open_url(app: AppHandle, url: String) -> Result<(), String> {
         .open_url(url, None::<&str>)
         .map_err(|e| e.to_string())
 }
+
+/// 日志文件位置。与 `crate::log` 写的是同一个文件。
+pub(crate) fn log_path() -> std::path::PathBuf {
+    std::env::temp_dir().join("convy.log")
+}
+
+/// 前端崩溃时把错误写进同一份日志。
+///
+/// 界面白屏时用户没法从界面上取到任何信息，这条命令是他唯一能把现场交出来的通道。
+#[tauri::command]
+pub fn log_frontend_error(message: String) {
+    crate::log(&format!("[frontend] {message}"));
+}
+
+/// 打开日志文件（不存在就先建一个空的，避免报「文件不存在」）。
+#[tauri::command]
+pub fn open_log_file() -> Result<(), String> {
+    let path = log_path();
+    if !path.exists() {
+        let _ = std::fs::write(&path, b"");
+    }
+    open_path(path.to_string_lossy().to_string())
+}

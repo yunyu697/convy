@@ -1,6 +1,6 @@
 [package]
 name = "convy"
-version = "1.0.0"
+version = "1.1.0"
 description = "Convy - cross-platform file format converter"
 authors = ["Convy"]
 edition = "2021"
@@ -25,6 +25,8 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = [] }
 tauri-plugin-dialog = "2"
 tauri-plugin-opener = "2"
+# 单实例：第二次启动时聚焦已有窗口，而不是开新窗口抢同一份 settings.json / 队列
+tauri-plugin-single-instance = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = [

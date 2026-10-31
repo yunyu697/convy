@@ -35,6 +35,10 @@ export const api = {
   revealOutput: (path: string) => invoke<void>("reveal_output", { path }),
   openPath: (path: string) => invoke<void>("open_path", { path }),
   openUrl: (url: string) => invoke<void>("open_url", { url }),
+  /** 界面崩溃时把现场写进 convy.log */
+  logFrontendError: (message: string) =>
+    invoke<void>("log_frontend_error", { message }),
+  openLogFile: () => invoke<void>("open_log_file"),
 
   // ---- 设置与预设
   getSettings: () => invoke<Settings>("get_settings"),

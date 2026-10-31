@@ -15,7 +15,7 @@ use tauri::State;
 pub fn persist_settings(state: &Arc<AppState>) {
     let dir = config_dir(state);
     let path = dir.join("settings.json");
-    let s = state.settings.lock().unwrap().clone();
+    let s = crate::lock_ok(&state.settings).clone();
     let _ = s.save(&path);
 }
 
@@ -29,7 +29,7 @@ pub async fn save_settings(
     settings: Settings,
     state: State<'_, Arc<AppState>>,
 ) -> Result<(), String> {
-    *state.settings.lock().unwrap() = settings.clone();
+    *crate::lock_ok(&state.settings) = settings.clone();
     persist_settings(state.inner());
 
     // 目标格式设置变化 → 立即同步到当前所有待处理任务，
