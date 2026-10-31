@@ -115,18 +115,33 @@ npm test             # 前端单元测试（vitest）
 
 | 文件 | 触发 | 内容 |
 |---|---|---|
-| `.github/workflows/ci.yml` | 每次 push / PR | `rustfmt` 检查、`clippy -D warnings`、`cargo test`、前端 `tsc` + `vite build` |
-| `.github/workflows/release.yml` | 推 `v*` tag | 在 Windows 上编译 NSIS + MSI，上传 artifact 并发布到 GitHub Release |
+| `.github/workflows/ci.yml` | 每次 push / PR | `rustfmt`、`clippy -D warnings`、`cargo test`、前端 `tsc` + `vite build`，外加 macOS / Linux 上的 `cargo check` |
+| `.github/workflows/release.yml` | 推 `v*` tag | 四台机器并行打包，收齐产物后发一个 GitHub Release |
 
-两个 Rust 相关的 job 都跑在 `windows-latest`：项目实际只发布 NSIS / MSI，而且 `src-tauri` 里有
-`#[cfg(windows)]` 分支（`import.rs` 的符号链接防护、`lib.rs` 的路径处理），跑 Linux 覆盖不到，
-顺带还省掉了 Tauri 在 Linux 上那一堆 webkit / gtk 系统依赖。
+测试那个 job 跑在 `windows-latest`：`src-tauri` 里有 `#[cfg(windows)]` 分支（`import.rs` 的符号链接防护、
+`lib.rs` 的路径处理），在 Linux 上跑覆盖不到。跨平台能不能编译由单独的 `cargo check` 矩阵守着。
 
-发版只需要：
+打包矩阵：
+
+| 平台 | 产物 |
+|---|---|
+| Windows | `.msi` + `.exe`（NSIS）+ `Convy-portable-win64.zip` 便携版 |
+| macOS | `.dmg` ×2（arm64 原生 + x86_64 交叉编译） |
+| Linux | `.deb` + `.rpm` + `.AppImage` + 裸二进制 `tar.gz` |
+
+发版三步：
 
 ```bash
-git tag v1.1.0 && git push origin v1.1.0
+# 1. 四处版本号同步（缺一处会导致安装包内版本与应用自报版本不一致）
+#    package.json / src-tauri/tauri.conf.json / src-tauri/Cargo.toml / src-tauri/Cargo.lock
+# 2. 在 CHANGELOG.md 顶部加一节 "## x.y.z — 日期"
+# 3. 提交后打 tag
+git tag v1.2.0 && git push origin v1.2.0
 ```
+
+> Release 正文取自 `CHANGELOG.md` 里与 tag 对应的那一节 —— 应用里「设置 → 更新日志」显示的就是它，
+> 所以这段是给用户读的，不是给开发者读的。`CHANGELOG.md` 里找不到对应版本时才退回 GitHub 自动生成的说明，
+> 而这个仓库直接往 master 提交、没有 PR，自动生成的结果往往只有一行 Full Changelog 链接。
 
 > 端到端测试在系统缺少 ffmpeg / ImageMagick 等引擎时会自动跳过，所以 CI 环境不装这些工具也是绿的。
 > 想手动验证真实转换链路用 `cargo test --test convert -- --ignored --nocapture live_selfcheck`。
@@ -542,6 +557,7 @@ convy/
 │   ├── engines/               随包分发的二进制
 │   └── tauri.conf.json
 ├── ui-preview.html            静态界面预览（含主题切换）
+├── CHANGELOG.md               更新日志（发版时作为 Release 正文）
 └── package.json
 ```
 

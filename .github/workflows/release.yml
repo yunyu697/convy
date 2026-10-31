@@ -163,8 +163,31 @@ jobs:
           path: all-artifacts
           merge-multiple: true
 
+      # 应用里「设置 → 更新日志」显示的就是 Release 正文，所以正文得是给人读的。
+      # GitHub 自动生成的说明靠 PR 归纳，而这个仓库直接往 master 提交，
+      # 生成出来常常只有一行 Full Changelog 链接。改为从 CHANGELOG.md 取本版一节；
+      # 取不到（比如补发旧 tag、或忘了写）才退回自动生成。
+      - name: 取出本版更新日志
+        id: notes
+        run: |
+          set -euo pipefail
+          ver="${GITHUB_REF_NAME#v}"
+          awk -v pat="## ${ver}" '
+            index($0, pat) == 1 { on = 1; next }
+            on && index($0, "## ") == 1 { exit }
+            on { print }
+          ' CHANGELOG.md > notes.md || true
+          if [ -s notes.md ]; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+            echo "已取到 ${ver} 的更新日志（$(wc -l < notes.md) 行）"
+          else
+            echo "found=false" >> "$GITHUB_OUTPUT"
+            echo "CHANGELOG.md 里没有 ${ver} 一节，改用自动生成的说明"
+          fi
+
       - name: 发布
         uses: softprops/action-gh-release@v2
         with:
           files: all-artifacts/*
-          generate_release_notes: true
+          body_path: ${{ steps.notes.outputs.found == 'true' && 'notes.md' || '' }}
+          generate_release_notes: ${{ steps.notes.outputs.found != 'true' }}
