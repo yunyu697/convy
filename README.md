@@ -9,6 +9,52 @@
 
 ---
 
+## 首次打开提示
+
+从 [Releases](../../releases/latest) 下载对应平台的安装包后，**第一次打开时系统会拦一下**。
+原因是安装包没有购买代码签名证书（Windows 的 EV 证书、Apple Developer 年费对个人项目都是实打实的成本），
+不是文件损坏，也不是病毒 —— 源码全部公开，你也可以自己 `npm run app:build` 构建一个。
+
+### Windows
+
+双击安装包，如果出现蓝色窗口「**Windows 已保护你的电脑**」：
+
+1. 点 **更多信息**
+2. 点 **仍要运行**
+
+便携版（zip）解压后首次运行 `convy.exe` 同样会被拦一次，处理方式一样。
+
+### macOS
+
+从 dmg 把 Convy 拖进「应用程序」后，双击可能提示：
+
+> 「Convy」已损坏，无法打开。您应该将它移到废纸篓。
+
+这是 Gatekeeper 对**未公证应用**的固定说辞，文件本身是完整的。打开终端执行一次即可：
+
+```bash
+xattr -dr com.apple.quarantine /Applications/Convy.app
+```
+
+之后正常双击打开。也可以走图形界面：**系统设置 → 隐私与安全性**，在底部找到被拦截的 Convy，点 **仍要打开**。
+
+> macOS 15 (Sequoia) 起，以前"右键 → 打开"的绕过方式已经失效，只能用上面两种之一。
+
+### Linux
+
+- **deb / rpm**：`sudo dpkg -i Convy_*_amd64.deb` 或 `sudo rpm -i Convy-*-1.x86_64.rpm`，装完从应用菜单启动
+- **AppImage**：需要先加执行权限
+
+  ```bash
+  chmod +x Convy_*_amd64.AppImage
+  ./Convy_*_amd64.AppImage
+  ```
+
+  如果报 `error while loading shared libraries: libfuse.so.2`，装一下 FUSE
+  （`sudo apt install libfuse2`），或改用 `--appimage-extract-and-run` 参数启动
+
+- **裸二进制（tar.gz）**：解压后直接运行 `./convy`，需要系统已装 `libwebkit2gtk-4.1`
+
 ## 技术栈
 
 | 层 | 选型 |
