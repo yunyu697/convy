@@ -106,6 +106,7 @@ cargo test --all
 
 cd ..
 npm run build        # tsc --noEmit && vite build
+npm test             # 前端单元测试（vitest）
 ```
 
 ## CI / 发版
@@ -342,6 +343,9 @@ git tag v1.1.0 && git push origin v1.1.0
 - [x] 任务取消（杀整个进程树，不留孤儿进程）
 - [x] 输出目录可自定义，重名自动加序号或覆盖
 - [x] LibreOffice 并发隔离（每任务独立 profile 目录）
+- [x] 首次启动三步向导：选用途 → 装对应引擎 → 转第一个文件（可从设置里重新打开）
+- [x] 大队列增量渲染：一次导入 3000 个文件也只挂 80 行，滚动到底自动追加
+- [x] 崩溃兜底：渲染异常显示可恢复页面，并可一键打开日志
 
 ## 已知限制
 
@@ -390,6 +394,10 @@ cargo build --release --features custom-protocol
 ```bash
 cd src-tauri
 cargo test           # 14 个测试，含 3 个真实 FFmpeg 端到端转换
+
+cd ..
+npm test             # 16 个前端测试（vitest + jsdom）
+npm run test:watch   # 开发时监听
 ```
 
 测试覆盖：格式矩阵路由、域间设置隔离（0 值语义、硬件模式透传、旋转/翻转/音量滤镜落参、
@@ -397,6 +405,26 @@ loudnorm 与增益互斥、图片旋转与透明拍平）、内置预设校验�
 部分 JSON 容错、输出目录解析、引擎误判防护（Windows convert.exe 陷阱）、
 以及 mp4→webm / mp4→mp3 / png→jpg 三条真实转换链路。
 测试里的转换走与 App 完全一致的编码器降级链（`compute_enc_chain`）。
+
+前端测试盯的是三类容易悄悄回退的行为：
+
+- **队列增量渲染**：3000 条任务首屏只挂 80 行，滚动或点按钮再追加一页。
+  以前是 `list.map(...)` 全量挂载，导入刚结束时界面会明显卡一下。
+- **目标格式同步**：改模块的「目标格式」只影响待处理任务，
+  正在跑和已完成的不动（改了会让「已转换到 mp4」和实际产物对不上）；
+  未命中的行复用同一对象引用，避免 memo 的 `JobRow` 整表重渲染。
+- **设置兜底合并**：老版本 `settings.json` 缺新字段、字段被手工改坏、
+  或后端比前端旧时，入口处补默认值，不让 `undefined` 漏进 `<select>` 和输入框。
+
+```bash
+npm test
+# ✓ src/__tests__/logic.test.ts        (11 tests)
+# ✓ src/__tests__/ModuleShell.test.tsx  (5 tests)
+```
+
+> `vitest.config.ts` 里关掉了 `fileParallelism`。vitest 2.x 的模块缓存按模块 id 做哈希，
+> 两个 worker 并发写同一个缓存文件时 Windows 会报 `EPERM`，然后把整个测试文件丢掉 ——
+> 表现是「只跑了一个文件，还显示通过」。串行跑两个文件不到 1 秒，不值得为它折腾。
 
 ## 目录结构
 
@@ -406,13 +434,17 @@ convy/
 │   ├── App.tsx                主容器 + 事件订阅 + 拖拽 + 主题注入
 │   ├── api.ts                 invoke / event 封装
 │   ├── types.ts               与 Rust 侧对应的类型 + 主题定义
+│   ├── logic.ts               纯逻辑：目标格式同步 / 设置兜底合并（可单测）
+│   ├── __tests__/             前端单元测试（vitest + jsdom）
 │   ├── components/
 │   │   ├── Sidebar.tsx        左侧导航（含引擎健康角标）
 │   │   ├── TopBar.tsx         顶栏 + 主题选择器
 │   │   ├── ui.tsx             表单控件（分段/滑块/开关/步进器/折叠组）
 │   │   ├── PresetBar.tsx      预设芯片栏
 │   │   ├── DropZone.tsx       拖放区
-│   │   └── JobRow.tsx         任务行
+│   │   ├── JobRow.tsx         任务行
+│   │   ├── Onboarding.tsx     首次启动三步向导
+│   │   └── ErrorBoundary.tsx  渲染崩溃兜底页
 │   ├── modules/
 │   │   ├── ModuleShell.tsx    转换模块共用骨架（左参数右队列）
 │   │   ├── panels.tsx         五个模块的精细化参数面板

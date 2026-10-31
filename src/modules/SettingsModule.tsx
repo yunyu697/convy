@@ -7,10 +7,13 @@ export default function SettingsModule({
   value,
   onChange,
   onToast,
+  onShowGuide,
 }: {
   value: GlobalSettings;
   onChange: (v: GlobalSettings) => void;
   onToast: (kind: "ok" | "err" | "info", text: string) => void;
+  /** 重新打开首次启动向导 */
+  onShowGuide: () => void;
 }) {
   const set = <K extends keyof GlobalSettings>(k: K, v: GlobalSettings[K]) =>
     onChange({ ...value, [k]: v });
@@ -137,6 +140,12 @@ export default function SettingsModule({
         </Group>
 
         <Group title="关于" defaultOpen={false}>
+          <Field label="新手引导" hint="忘了怎么开始？重新走一遍三步设置">
+            <button type="button" className="btn btn--ghost" onClick={onShowGuide}>
+              重新查看
+            </button>
+          </Field>
+
           <div className="prose">
             <p>
               <strong>Convy · 万象转换</strong> 是一个跨平台格式转换工具，

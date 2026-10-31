@@ -1699,6 +1699,28 @@ code {
   overflow-y: auto;
 }
 
+/* 增量渲染的「还有更多」按钮：既是提示也是点击目标，
+   键盘用户和不想滚动的人都能用它加载下一批 */
+.queue__more {
+  width: 100%;
+  padding: 12px;
+  border: 0;
+  border-top: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-dim);
+  font-family: var(--font);
+  font-size: 12px;
+  cursor: pointer;
+  transition:
+    background var(--dur-fast) var(--ease),
+    color var(--dur-fast) var(--ease);
+}
+
+.queue__more:hover {
+  background: var(--surface-3);
+  color: var(--text);
+}
+
 .queue__empty {
   display: flex;
   flex-direction: column;
@@ -3146,4 +3168,378 @@ code {
 
 .crash__hint code {
   font-family: var(--mono);
+}
+
+/* ---------------------------------------------------------------- 首次启动向导 */
+
+.onb {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: color-mix(in srgb, var(--bg) 72%, transparent);
+  backdrop-filter: blur(10px) saturate(120%);
+  animation: onb-fade var(--dur) var(--ease) both;
+}
+
+@keyframes onb-fade {
+  from {
+    opacity: 0;
+  }
+}
+
+.onb__card {
+  display: flex;
+  flex-direction: column;
+  width: min(720px, 100%);
+  max-height: min(84vh, 720px);
+  overflow: hidden;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-l);
+  box-shadow: var(--shadow-3);
+  animation: onb-rise var(--dur-slow) var(--ease-out) both;
+}
+
+@keyframes onb-rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.985);
+  }
+}
+
+.onb__head {
+  padding: 26px 30px 0;
+}
+
+.onb__brand {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+}
+
+.onb__logo {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 19px;
+  box-shadow: var(--shadow-2);
+}
+
+.onb__title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 620;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+
+.onb__sub {
+  margin: 3px 0 0;
+  font-size: 12.5px;
+  color: var(--text-faint);
+}
+
+.onb__steps {
+  display: flex;
+  gap: 8px;
+  margin: 22px 0 0;
+  padding: 0 0 18px;
+  border-bottom: 1px solid var(--border);
+  list-style: none;
+}
+
+.onb__step {
+  display: flex;
+  flex: 1;
+  gap: 8px;
+  align-items: center;
+  padding: 7px 10px;
+  border-radius: var(--radius-s);
+  color: var(--text-faint);
+  font-size: 12.5px;
+  transition:
+    background var(--dur) var(--ease),
+    color var(--dur) var(--ease);
+}
+
+.onb__step.is-active {
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 580;
+}
+
+.onb__step.is-done {
+  color: var(--text-dim);
+}
+
+.onb__stepnum {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 19px;
+  height: 19px;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  font-size: 10.5px;
+  font-weight: 600;
+  opacity: 0.75;
+}
+
+.onb__step.is-active .onb__stepnum {
+  border-color: transparent;
+  background: var(--accent);
+  color: #fff;
+  opacity: 1;
+}
+
+.onb__step.is-done .onb__stepnum {
+  border-color: transparent;
+  background: var(--ok-soft);
+  color: var(--ok);
+  opacity: 1;
+}
+
+.onb__body {
+  flex: 1;
+  min-height: 0;
+  padding: 22px 30px;
+  overflow-y: auto;
+}
+
+.onb__lead {
+  margin: 0 0 16px;
+  font-size: 13.5px;
+  line-height: 1.65;
+  color: var(--text);
+}
+
+.onb__note {
+  margin: 16px 0 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text-faint);
+}
+
+/* 用途选择 */
+
+.onb__domains {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(196px, 1fr));
+  gap: 10px;
+}
+
+.onb__domain {
+  display: grid;
+  grid-template-columns: 26px 1fr;
+  gap: 2px 10px;
+  align-items: center;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  text-align: left;
+  transition:
+    border-color var(--dur-fast) var(--ease),
+    background var(--dur-fast) var(--ease),
+    transform var(--dur-fast) var(--ease),
+    box-shadow var(--dur-fast) var(--ease);
+}
+
+.onb__domain:hover {
+  border-color: var(--border-strong);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-1);
+}
+
+.onb__domain.is-on {
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+  box-shadow: inset 0 0 0 1px var(--accent-line);
+}
+
+.onb__domainicon {
+  grid-row: span 2;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  background: var(--surface-3);
+  color: var(--text-dim);
+  font-size: 13px;
+}
+
+.onb__domain.is-on .onb__domainicon {
+  background: var(--accent);
+  color: #fff;
+}
+
+.onb__domain strong {
+  font-size: 13px;
+  font-weight: 580;
+  color: var(--text);
+}
+
+.onb__domaindesc {
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--text-faint);
+}
+
+/* 引擎清单 */
+
+.onb__engines {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.onb__engine {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+
+.onb__enginemain {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.onb__enginemain strong {
+  font-size: 13px;
+  font-weight: 580;
+  color: var(--text);
+}
+
+.onb__enginedesc {
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--text-faint);
+}
+
+.onb__engineact {
+  flex: none;
+}
+
+.onb__tag {
+  display: inline-flex;
+  gap: 5px;
+  align-items: center;
+  padding: 4px 9px;
+  border-radius: 999px;
+  background: var(--surface-3);
+  color: var(--text-faint);
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+
+.onb__tag--ok {
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+
+/* 第三步 */
+
+.onb__final {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.onb__tips {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 16px 0 0;
+  border-top: 1px solid var(--border);
+  list-style: none;
+}
+
+.onb__tips li {
+  position: relative;
+  padding-left: 16px;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--text-dim);
+}
+
+.onb__tips li::before {
+  content: "·";
+  position: absolute;
+  left: 5px;
+  color: var(--accent);
+  font-weight: 700;
+}
+
+/* 底部 */
+
+.onb__foot {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 30px 18px;
+  border-top: 1px solid var(--border);
+  background: var(--surface-2);
+}
+
+.onb__nav {
+  display: flex;
+  gap: 8px;
+}
+
+.onb .btn {
+  padding: 8px 18px;
+  font-size: 12.5px;
+}
+
+.onb .linkbtn {
+  font-size: 12px;
+  color: var(--text-faint);
+}
+
+.onb .linkbtn:hover {
+  color: var(--text-dim);
+}
+
+/* 窄窗口：三步标签会挤成一团，改成只显示当前步 */
+@media (max-width: 560px) {
+  .onb {
+    padding: 12px;
+  }
+
+  .onb__head {
+    padding: 20px 18px 0;
+  }
+
+  .onb__body {
+    padding: 18px;
+  }
+
+  .onb__foot {
+    padding: 14px 18px;
+  }
+
+  .onb__step {
+    display: none;
+  }
+
+  .onb__step.is-active {
+    display: flex;
+  }
 }

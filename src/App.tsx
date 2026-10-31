@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { api, events } from "./api";
+import { applyTargets, mergeSettings, pickStaleTargets } from "./logic";
 import { Sidebar, type ViewId } from "./components/Sidebar";
 import { TopBar } from "./components/TopBar";
+import Onboarding from "./components/Onboarding";
 import EngineModule from "./modules/EngineModule";
 import HistoryModule from "./modules/HistoryModule";
 import ModuleShell from "./modules/ModuleShell";
@@ -53,6 +55,19 @@ export default function App() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(
     () => localStorage.getItem("convy.sidebarCollapsed") === "1",
   );
+  /**
+   * 首次启动引导。用 localStorage 而不是后端设置：引导只是「看过没看过」，
+   * 不需要跨设备同步，也不该为了它去动 settings 的结构。
+   * 用函数式初始化，避免每次渲染都读一遍 storage。
+   */
+  const [onboarding, setOnboarding] = useState(
+    () => localStorage.getItem("convy.onboarded") !== "1",
+  );
+
+  const closeOnboarding = useCallback(() => {
+    localStorage.setItem("convy.onboarded", "1");
+    setOnboarding(false);
+  }, []);
 
   const toggleSidebar = () =>
     setSidebarCollapsed((v) => {
@@ -90,7 +105,8 @@ export default function App() {
       .then((s) => {
         settled = true;
         window.clearTimeout(watchdog);
-        setSettings(s);
+        // 老配置文件可能缺新字段，入口处补齐，避免 undefined 漏进界面
+        setSettings(mergeSettings(s));
       })
       .catch((e) => {
         settled = true;
@@ -146,18 +162,9 @@ export default function App() {
     if (!settings) return;
     (["video", "audio", "image", "ebook", "document"] as Domain[]).forEach((d) => {
       const want = (settings[d] as { defaultTarget?: string }).defaultTarget ?? "";
-      if (!want) return;
-      const stale = jobsRef.current.filter(
-        (j) => j.status === "pending" && j.domain === d && j.targetFormat !== want,
-      );
+      const stale = pickStaleTargets(jobsRef.current, d, want);
       if (!stale.length) return;
-      setJobs((prev) =>
-        prev.map((j) =>
-          j.status === "pending" && j.domain === d && j.targetFormat !== want
-            ? { ...j, targetFormat: want }
-            : j,
-        ),
-      );
+      setJobs((prev) => applyTargets(prev, d, want));
       stale.forEach((j) => void api.setTarget(j.id, want).catch(() => {}));
     });
   }, [settings]);
@@ -590,6 +597,7 @@ export default function App() {
               value={settings.global}
               onChange={(v) => patchSettings((s) => ({ ...s, global: v }))}
               onToast={toast}
+              onShowGuide={() => setOnboarding(true)}
             />
           )}
         </div>
@@ -611,6 +619,18 @@ export default function App() {
           </div>
         ))}
       </div>
+
+      {onboarding && settings && (
+        <Onboarding
+          onClose={closeOnboarding}
+          onPickFile={() => {
+            // 先关掉引导再开系统选择框，否则遮罩会盖在对话框上层
+            closeOnboarding();
+            void pickFiles();
+          }}
+          onToast={toast}
+        />
+      )}
 
       {dragging && (
         <div className="dropveil">

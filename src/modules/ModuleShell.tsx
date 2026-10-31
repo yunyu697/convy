@@ -1,9 +1,26 @@
-import type { ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import DropZone from "../components/DropZone";
 import JobRow from "../components/JobRow";
 import PresetBar from "../components/PresetBar";
 import { api } from "../api";
 import { DOMAIN_META, type Domain, type Job, type Preset } from "../types";
+
+/**
+ * 队列一次渲染多少行。
+ *
+ * 导入上限是 3000 个文件（见 import.rs），原来直接 `list.map(...)` 会一次性
+ * 挂载 3000 个 JobRow —— 每个都是六列 grid + 动画，导入刚结束那一下会明显卡顿。
+ * 改成增量渲染：首屏只画 80 行，滚到接近底部再追加。
+ *
+ * 为什么不用「绝对定位 + 固定行高」那种真虚拟化：这一行的高度不是常数
+ * （带子目录胶囊、长文件名换行都会撑高），硬定高会把内容裁掉。
+ * 增量渲染不改布局、不需要测量，代价只是滚到底时 DOM 仍会增长到全量 ——
+ * 但用户真滚到第 3000 条时，那点开销已经无所谓了。
+ */
+const PAGE = 80;
+/** 距底部多少像素开始追加下一批 */
+const PRELOAD_PX = 400;
+
 export interface ModuleShellProps {
   domain: Domain;
   /** 该模块的精细化设置面板 */
@@ -63,6 +80,27 @@ export default function ModuleShell(props: ModuleShellProps) {
   const list = jobs.filter((j) => j.domain === domain);
   const pending = list.filter((j) => j.status === "pending").length;
   const done = list.filter((j) => j.status === "done").length;
+
+  const [shown, setShown] = useState(PAGE);
+  const listRef = useRef<HTMLDivElement>(null);
+
+  // 换模块（或列表被清空后重新导入）时回到首屏数量，
+  // 否则会沿用上一个模块滚出来的行数
+  useEffect(() => {
+    setShown(PAGE);
+    if (listRef.current) listRef.current.scrollTop = 0;
+  }, [domain]);
+
+  const onListScroll = () => {
+    const el = listRef.current;
+    if (!el) return;
+    const remain = el.scrollHeight - el.scrollTop - el.clientHeight;
+    if (remain < PRELOAD_PX) {
+      setShown((n) => (n >= list.length ? n : Math.min(n + PAGE, list.length)));
+    }
+  };
+
+  const visible = list.length > shown ? list.slice(0, shown) : list;
 
   return (
     <div className="module">
@@ -145,7 +183,7 @@ export default function ModuleShell(props: ModuleShellProps) {
               </div>
             </div>
 
-            <div className="queue__list">
+            <div className="queue__list" ref={listRef} onScroll={onListScroll}>
               {list.length === 0 ? (
                 <div className="queue__empty">
                   <span className="queue__emptyicon" aria-hidden>
@@ -155,19 +193,29 @@ export default function ModuleShell(props: ModuleShellProps) {
                   <span>拖入文件后会出现在这里</span>
                 </div>
               ) : (
-                list.map((j) => (
-                  <JobRow
-                    key={j.id}
-                    job={j}
-                    live={liveProgress[j.id]}
-                    targets={targetsCache[j.sourceExt] ?? []}
-                    onTargets={onTargets}
-                    onRemove={onRemove}
-                    onCancel={onCancel}
-                    onRetry={onRetry}
-                    onChangeTarget={onChangeTarget}
-                  />
-                ))
+                <>
+                  {visible.map((j) => (
+                    <JobRow
+                      key={j.id}
+                      job={j}
+                      live={liveProgress[j.id]}
+                      targets={targetsCache[j.sourceExt] ?? []}
+                      onTargets={onTargets}
+                      onRemove={onRemove}
+                      onCancel={onCancel}
+                      onRetry={onRetry}
+                      onChangeTarget={onChangeTarget}
+                    />
+                  ))}
+                  {shown < list.length && (
+                    <button
+                      className="queue__more"
+                      onClick={() => setShown((n) => Math.min(n + PAGE, list.length))}
+                    >
+                      已显示 {shown} / {list.length} 项 · 继续滚动或点击加载更多
+                    </button>
+                  )}
+                </>
               )}
             </div>
           </div>
