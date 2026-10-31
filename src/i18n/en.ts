@@ -522,6 +522,11 @@ const dict: Record<string, string> = {
   "已用系统默认程序打开安装包": "Opened the installer with the default app",
   "。": ".",
   "，": ", ",
+  "已校验 SHA-256": "SHA-256 verified",
+  "已校验 SHA-256（校验值经镜像获取，保护有限）": "SHA-256 verified (checksum fetched via mirror — limited protection)",
+  "未校验：这个版本没有发布校验文件": "Not verified: this version has no checksum file",
+  "未校验": "Not verified",
+  "正在校验安装包…": "Verifying the installer…",
 };
 
 export default dict;

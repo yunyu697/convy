@@ -113,6 +113,8 @@ pub struct UpdateDownload {
     pub size: u64,
     /// 实际生效的镜像名（auto 模式下能看出走的哪条）
     pub mirror: String,
+    /// SHA-256 校验结论 —— 界面必须把它显示出来，不能只报「下载成功」
+    pub verify: updater::VerifyInfo,
 }
 
 /// 只下载、不安装。
@@ -130,6 +132,21 @@ pub async fn app_update_download(
             rel.tag
         )
     })?;
+
+    // 校验清单先取：万一取不到就别白下几十 MB。
+    // 这个版本压根没发校验文件时是 None（1.2.1 及更早），下载照常，只是标为未校验。
+    let sums = match updater::fetch_sums(&rel.assets, &mirror).await {
+        Some(Ok(s)) => Some(s),
+        Some(Err(e)) => {
+            // 发布里带了校验文件却一条通道都取不到。此时无法确认安装包没被改过，
+            // 而下一步就是在本机执行它 —— 宁可让用户去发布页手动下载。
+            return Err(format!(
+                "无法获取安装包的校验文件，已中止下载：{e}\n\
+                 可以稍后重试，或点「打开下载页面」手动下载。"
+            ));
+        }
+        None => None,
+    };
 
     // 存到系统下载目录下的 Convy 子目录：用户装完还能自己找到这个文件，
     // 放到 temp 里会被系统清理，出问题也说不清装的是哪个包
@@ -157,12 +174,32 @@ pub async fn app_update_download(
     })
     .await?;
 
+    // 下载完成不等于可以执行。哈希对不上就把文件删掉 —— 留在磁盘上迟早有人去双击它。
+    let _ = app.emit(
+        "app:update-progress",
+        serde_json::json!({
+            "phase": "verify",
+            "progress": 1.0,
+            "message": "",
+            "asset": asset.name,
+            "total": asset.size,
+        }),
+    );
+    let verify = match updater::verify_file(&dest, &asset.name, sums).await {
+        Ok(v) => v,
+        Err(e) => {
+            let _ = tokio::fs::remove_file(&dest).await;
+            return Err(e);
+        }
+    };
+
     Ok(UpdateDownload {
         path: dest.to_string_lossy().to_string(),
         version: rel.tag,
         asset: asset.name.clone(),
         size: asset.size,
         mirror: mirror_name,
+        verify,
     })
 }
 

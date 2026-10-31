@@ -419,12 +419,28 @@ export interface AppUpdateInfo {
   skippedByUser: boolean;
 }
 
+/**
+ * 下载后的完整性校验结论。
+ *
+ * `verified = false` 不等于文件有问题，它表示「这个版本没发校验文件」——
+ * 界面要如实说明，不能把「没校验」显示成「已验证」。
+ */
+export interface VerifyInfo {
+  verified: boolean;
+  /** 实际算出来的哈希 */
+  actual: string;
+  expected: string | null;
+  /** 见后端 updater::note：no-sums / via-mirror */
+  note: string | null;
+}
+
 export interface UpdateDownload {
   path: string;
   version: string;
   asset: string;
   size: number;
   mirror: string;
+  verify: VerifyInfo;
 }
 
 export interface InstallOutcome {

@@ -4,8 +4,13 @@
 //! --------------------------------
 //! 它要求发布时对安装包做私钥签名、把 `.sig` 一并发布，还得长期保管私钥。
 //! 这个项目目前只发 NSIS / MSI，为它引入一整套签名环节的成本大于收益。
-//! 所以这里做成「查询 → 提示 → 由用户决定是否下载」，把安装这一步留给用户；
-//! 后面真要做静默安装，替换本模块的输出层即可，设置层不用动。
+//! 所以更新链路由本模块自己实现：检查 → 提示 → 下载 → 校验 → 安装。
+//!
+//! 完整性
+//! ------
+//! 安装包可能经第三方镜像下载，而装完就是在本机执行它 —— 这是整条链路上
+//! 唯一一处「下载即执行」的动作，所以下载完必须核对 SHA-256。校验值由 CI 在
+//! 打包后当场生成（`SHA256SUMS`），与安装包同批发布；详见 [`fetch_sums`]。
 //!
 //! 镜像
 //! ----
@@ -655,6 +660,208 @@ async fn download_stream(
     Ok(())
 }
 
+// ---------------------------------------------------------------- 完整性校验
+
+/// 发布时由 CI 生成的校验文件（`sha256sum` 的输出格式）。
+///
+/// 信任模型与引擎下载一致（见 `crate::engines::integrity` 的模块注释）：
+/// **哈希必须来自与文件不同的通道**。安装包可以走加速镜像，校验文件则优先直连
+/// GitHub —— 镜像能改安装包，改不了 GitHub 上的那份清单，对不上就中止。
+///
+/// 能挡住什么、挡不住什么，这里先说清楚，免得以后有人高估它：
+///
+/// - 挡得住：下载截断 / 损坏、镜像串包（把别的版本或架构的包配给你）、
+///   以及「API 直连而下载走镜像」时镜像对安装包的替换
+/// - 挡不住：恶意镜像。前缀式加速把 API 响应也一起代理了，它可以干脆不返回这个
+///   附件，让应用退回「未校验」状态。真正的根治手段是代码签名，不是哈希
+///
+/// 也就是说这层校验降低的是出错概率，不是针对主动攻击的保证 —— 文案上不许说成
+/// 「已验证，绝对安全」。
+const SUMS_ASSET: &str = "SHA256SUMS";
+
+/// `Sums::source` 的取值：官方直连。其余值是镜像名。
+const SOURCE_GITHUB: &str = "github";
+
+/// `VerifyInfo::note` 的取值。界面拿它去查对应语言的文案，
+/// 后端不返回成品句子 —— 措辞得跟着界面语言走。
+pub mod note {
+    /// 这个版本压根没发布校验文件（1.2.1 及更早）
+    pub const NO_SUMS: &str = "no-sums";
+    /// 校验值是从镜像取到的，只能防损坏，防不了恶意镜像
+    pub const VIA_MIRROR: &str = "via-mirror";
+}
+
+/// 一次校验的结论，直接序列化给界面。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VerifyInfo {
+    /// 是否真的比对过（false = 没有可信哈希，不代表文件有问题）
+    pub verified: bool,
+    /// 实际算出来的哈希，排错时有用
+    pub actual: String,
+    pub expected: Option<String>,
+    /// 见 [`note`]，`verified = true` 时也可能有值（走了镜像）
+    pub note: Option<String>,
+}
+
+/// 一份校验清单 + 它是从哪条通道取到的。
+#[derive(Debug, Clone)]
+pub struct Sums {
+    /// (哈希, 文件名)
+    pub list: Vec<(String, String)>,
+    /// `github` = 官方直连；其余是镜像名
+    pub source: String,
+}
+
+/// 解析 `sha256sum` 输出。
+///
+/// 兼容三种写法：`<hash>  <name>`、`<hash> *<name>`（二进制模式）、
+/// 以及带 `./` 前缀的路径。无法识别的行直接跳过 —— 宁可少一条，
+/// 也不要把半截内容当成哈希。
+pub fn parse_sums(text: &str) -> Vec<(String, String)> {
+    text.lines()
+        .filter_map(|line| {
+            let line = line.trim();
+            if line.is_empty() || line.starts_with('#') {
+                return None;
+            }
+            let mut parts = line.splitn(2, char::is_whitespace);
+            let hash = parts.next()?.trim();
+            if hash.len() != 64 || !hash.chars().all(|c| c.is_ascii_hexdigit()) {
+                return None;
+            }
+            let name = parts
+                .next()?
+                .trim()
+                .trim_start_matches('*')
+                .trim_start_matches("./");
+            if name.is_empty() {
+                return None;
+            }
+            Some((hash.to_ascii_lowercase(), name.to_string()))
+        })
+        .collect()
+}
+
+/// 从清单里找某个文件名的哈希。文件名大小写不敏感（macOS 上两者可能不一致）。
+fn find_expected<'a>(list: &'a [(String, String)], name: &str) -> Option<&'a str> {
+    list.iter()
+        .find(|(_, n)| n.eq_ignore_ascii_case(name))
+        .map(|(h, _)| h.as_str())
+}
+
+fn sums_asset(assets: &[ReleaseAsset]) -> Option<&ReleaseAsset> {
+    assets.iter().find(|a| {
+        let n = a.name.to_ascii_lowercase();
+        n == "sha256sums" || n == "sha256sums.txt"
+    })
+}
+
+/// 取校验清单。返回 `None` 表示这个版本没有发布校验文件。
+///
+/// 先直连，再按镜像顺序兜底：直连能通时哈希与安装包走的是两条通道，
+/// 恶意镜像无从下手；直连不通时（国内常见）才退到镜像，并在结果里标明。
+pub async fn fetch_sums(
+    assets: &[ReleaseAsset],
+    pref_mirror: &str,
+) -> Option<Result<Sums, String>> {
+    let asset = sums_asset(assets)?;
+
+    // 直连优先。注意这里**不套**镜像前缀，套了就失去「不同通道」这个前提。
+    let mut last_err = match read_sums(&asset.url).await {
+        Ok(list) => {
+            return Some(Ok(Sums {
+                list,
+                source: SOURCE_GITHUB.into(),
+            }))
+        }
+        Err(e) => format!("GitHub：{e}"),
+    };
+
+    for m in mirror_order(pref_mirror).await {
+        match read_sums(&apply_prefix(&m.prefix, &asset.url)).await {
+            Ok(list) => {
+                return Some(Ok(Sums {
+                    list,
+                    source: m.name.clone(),
+                }))
+            }
+            Err(e) => last_err = format!("{}：{e}", m.name),
+        }
+    }
+    Some(Err(last_err))
+}
+
+/// 取回并解析校验文件。解析不出任何条目也算失败 —— 有些镜像会把 404
+/// 渲染成一张 HTML 错误页，HTTP 200 但内容不是清单，不能当「空清单」放过。
+async fn read_sums(url: &str) -> Result<Vec<(String, String)>, String> {
+    let text = fetch_text(url).await?;
+    let list = parse_sums(&text);
+    if list.is_empty() {
+        return Err(format!("{SUMS_ASSET} 内容为空或格式无法识别"));
+    }
+    Ok(list)
+}
+
+/// 比对实际哈希与清单。不一致返回 `Err`，调用方负责删掉文件再报错。
+///
+/// 「清单里没有这个文件」也算失败：发版流程会断言清单与产物一一对应，
+/// 出现缺项说明发布本身有问题，这时候装下去比不装更危险。
+pub fn check_against_sums(
+    actual: &str,
+    sums: Option<&Sums>,
+    asset_name: &str,
+) -> Result<VerifyInfo, String> {
+    let Some(sums) = sums else {
+        return Ok(VerifyInfo {
+            verified: false,
+            actual: actual.to_string(),
+            expected: None,
+            note: Some(note::NO_SUMS.to_string()),
+        });
+    };
+
+    let expected = find_expected(&sums.list, asset_name).ok_or_else(|| {
+        format!("{asset_name} 不在 {SUMS_ASSET} 清单里，已中止安装。请到发布页手动下载。")
+    })?;
+
+    if !actual.eq_ignore_ascii_case(expected) {
+        return Err(format!(
+            "完整性校验失败：安装包与官方哈希不一致，已删除下载的文件。\n\
+             期望 {expected}\n实际 {actual}\n\
+             可能是下载过程中被篡改或文件损坏，请换一个更新源重试。"
+        ));
+    }
+
+    Ok(VerifyInfo {
+        verified: true,
+        actual: actual.to_string(),
+        expected: Some(expected.to_string()),
+        // 走了镜像就如实标注：能防损坏与镜像串包，防不了蓄意投毒
+        note: if sums.source == SOURCE_GITHUB {
+            None
+        } else {
+            Some(note::VIA_MIRROR.to_string())
+        },
+    })
+}
+
+/// 算哈希并比对。
+///
+/// 安装包最大有 78 MB（AppImage），读盘 + 哈希是同步阻塞操作，
+/// 丢到 `spawn_blocking` 里算，别卡住 tokio 的 worker 线程。
+pub async fn verify_file(
+    path: &Path,
+    asset_name: &str,
+    sums: Option<Sums>,
+) -> Result<VerifyInfo, String> {
+    let p = path.to_path_buf();
+    let actual = tokio::task::spawn_blocking(move || crate::engines::integrity::sha256_file(&p))
+        .await
+        .map_err(|e| format!("校验任务失败：{e}"))??;
+    check_against_sums(&actual, sums.as_ref(), asset_name)
+}
+
 fn human_size(bytes: u64) -> String {
     const UNITS: [&str; 4] = ["B", "KB", "MB", "GB"];
     let mut v = bytes as f64;
@@ -886,5 +1093,148 @@ mod tests {
         assert!(!is_due(0, "never"));
         // 频率已到：上次检查是很久以前
         assert!(is_due(1, "daily"));
+    }
+
+    // ------------------------------------------------ 完整性校验
+
+    const H: &str = "60f467265b1e312373dbcd92200c2618a74850f98d3d078e94296bb3fa2047ba";
+    const H2: &str = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+
+    #[test]
+    fn sums_parses_all_three_line_shapes() {
+        // `sha256sum` 在 Linux 上是两个空格，二进制模式带 `*`，
+        // 而有人手工生成时可能写成 `./名字`
+        let text = format!(
+            "{H}  Convy_1.2.2_x64-setup.exe\n\
+             {H2} *Convy_1.2.2_aarch64.dmg\n\
+             {H}  ./Convy_1.2.2_amd64.deb\n"
+        );
+        let list = parse_sums(&text);
+        assert_eq!(list.len(), 3);
+        assert_eq!(find_expected(&list, "Convy_1.2.2_x64-setup.exe"), Some(H));
+        assert_eq!(find_expected(&list, "Convy_1.2.2_aarch64.dmg"), Some(H2));
+        // `./` 前缀要被剥掉，否则名字对不上、每次更新都会报「不在清单里」
+        assert_eq!(find_expected(&list, "Convy_1.2.2_amd64.deb"), Some(H));
+    }
+
+    #[test]
+    fn sums_ignores_garbage_lines() {
+        // 镜像把 404 渲染成 HTML 时，不能从里面「猜」出一个哈希
+        let text = format!("<html>404</html>\n\n# 注释\nzzz  x\n{H}\n");
+        let list = parse_sums(&text);
+        // 只剩最后一行：只有哈希、没有文件名 —— 没有名字就没法对应到安装包
+        assert!(list.is_empty(), "不该从垃圾内容里解析出条目：{list:?}");
+    }
+
+    #[test]
+    fn sums_name_match_is_case_insensitive() {
+        let list = vec![(H.to_string(), "CONVY_1.2.2_X64-SETUP.EXE".to_string())];
+        assert_eq!(find_expected(&list, "Convy_1.2.2_x64-setup.exe"), Some(H));
+    }
+
+    #[test]
+    fn sums_asset_found_among_real_assets() {
+        let mut assets = v120_assets();
+        assert!(sums_asset(&assets).is_none(), "老版本没有校验文件");
+        assets.push(asset(SUMS_ASSET));
+        assert_eq!(sums_asset(&assets).unwrap().name, SUMS_ASSET);
+        // 大小写不同也要认
+        assets.pop();
+        assets.push(asset("sha256sums"));
+        assert!(sums_asset(&assets).is_some());
+    }
+
+    #[test]
+    fn missing_sums_is_reported_not_silently_accepted() {
+        // 1.2.1 及更早没发校验文件：可以继续装，但必须让界面能说明白
+        let v = check_against_sums(H, None, "Convy_1.2.2_x64-setup.exe").unwrap();
+        assert!(!v.verified);
+        assert_eq!(v.note.as_deref(), Some(note::NO_SUMS));
+        assert!(v.expected.is_none());
+    }
+
+    #[test]
+    fn matching_hash_is_verified() {
+        let sums = Sums {
+            list: vec![(H.to_string(), "Convy_1.2.2_x64-setup.exe".to_string())],
+            source: SOURCE_GITHUB.into(),
+        };
+        let v = check_against_sums(H, Some(&sums), "Convy_1.2.2_x64-setup.exe").unwrap();
+        assert!(v.verified);
+        assert_eq!(v.note, None, "直连取到的校验值不该带「保护有限」的标注");
+    }
+
+    #[test]
+    fn mismatch_is_fatal_and_mentions_both_hashes() {
+        let sums = Sums {
+            list: vec![(H2.to_string(), "Convy_1.2.2_x64-setup.exe".to_string())],
+            source: SOURCE_GITHUB.into(),
+        };
+        let err = check_against_sums(H, Some(&sums), "Convy_1.2.2_x64-setup.exe").unwrap_err();
+        assert!(err.contains("完整性校验失败"));
+        assert!(err.contains(H2), "要给出期望值，用户才能核对");
+        assert!(err.contains(H), "要给出实际值，否则没法判断是不是下载坏了");
+    }
+
+    #[test]
+    fn asset_missing_from_sums_is_fatal() {
+        // 清单里没有这个包 = 发版流程出了问题，这时候装下去比不装更危险
+        let sums = Sums {
+            list: vec![(H.to_string(), "Convy_1.2.2_x64.dmg".to_string())],
+            source: SOURCE_GITHUB.into(),
+        };
+        let err = check_against_sums(H, Some(&sums), "Convy_1.2.2_x64-setup.exe").unwrap_err();
+        assert!(err.contains("不在"));
+    }
+
+    #[test]
+    fn mirror_sourced_sums_are_marked() {
+        // 直连不通时退到镜像：仍然比对，但要标明保护强度有限，不能假装等价
+        let sums = Sums {
+            list: vec![(H.to_string(), "Convy_1.2.2_x64-setup.exe".to_string())],
+            source: "GhProxy".into(),
+        };
+        let v = check_against_sums(H, Some(&sums), "Convy_1.2.2_x64-setup.exe").unwrap();
+        assert!(v.verified);
+        assert_eq!(v.note.as_deref(), Some(note::VIA_MIRROR));
+    }
+
+    #[tokio::test]
+    async fn verify_file_hashes_real_bytes() {
+        let dir = std::env::temp_dir().join(format!("convy-upd-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let p = dir.join("Convy_1.2.2_x64-setup.exe");
+        std::fs::write(&p, b"abc").unwrap();
+
+        // "abc" 的 SHA-256 是固定值，正好验证「真的读了文件」而不是走了别的分支
+        let sums = Sums {
+            list: vec![(H2.to_string(), "Convy_1.2.2_x64-setup.exe".to_string())],
+            source: SOURCE_GITHUB.into(),
+        };
+        let v = verify_file(&p, "Convy_1.2.2_x64-setup.exe", Some(sums))
+            .await
+            .unwrap();
+        assert!(v.verified);
+        assert_eq!(v.actual, H2);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn verify_file_rejects_tampered_bytes() {
+        let dir = std::env::temp_dir().join(format!("convy-upd-bad-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let p = dir.join("Convy_1.2.2_x64-setup.exe");
+        std::fs::write(&p, b"not what CI built").unwrap();
+
+        let sums = Sums {
+            list: vec![(H2.to_string(), "Convy_1.2.2_x64-setup.exe".to_string())],
+            source: SOURCE_GITHUB.into(),
+        };
+        assert!(verify_file(&p, "Convy_1.2.2_x64-setup.exe", Some(sums))
+            .await
+            .is_err());
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

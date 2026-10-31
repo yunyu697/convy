@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import { api, events } from "../api";
 import { Field, Group, Select } from "../components/ui";
 import { t, useT } from "../i18n";
-import { formatSize, type AppUpdateInfo, type GlobalSettings, type UpdateDownload } from "../types";
+import { formatSize, type AppUpdateInfo, type GlobalSettings, type UpdateDownload, type VerifyInfo } from "../types";
 
 /**
  * 设置页的「更新」与「更新日志」两块。
@@ -46,6 +46,25 @@ function installToast(outcome: { mode: "silent" | "opened" }): string {
   return outcome.mode === "silent"
     ? t("安装程序已在后台启动，应用即将退出")
     : t("已用系统默认程序打开安装包");
+}
+
+/**
+ * 校验结论 → 文案。
+ *
+ * 三种状态必须分开说，不能一律显示成「已验证」：
+ * - 直连取到哈希并比对通过：正常
+ * - 哈希是从镜像取的：比对过，但镜像若同时改文件和哈希就拦不住，如实降级说明
+ * - 这个版本没发校验文件：没比对过，不能让用户以为校验过了
+ */
+function verifyLabel(v: VerifyInfo): string {
+  if (!v.verified) {
+    return v.note === "no-sums"
+      ? t("未校验：这个版本没有发布校验文件")
+      : t("未校验");
+  }
+  return v.note === "via-mirror"
+    ? t("已校验 SHA-256（校验值经镜像获取，保护有限）")
+    : t("已校验 SHA-256");
 }
 
 /** 把 Release 正文按 Markdown 的几种常见标记渲染成节点（不注入 HTML） */
@@ -139,12 +158,13 @@ export default function UpdateSection({ info, onCheck, settings, onPatch, onToas
     const un = events.appUpdateProgress((p) => {
       if (!mounted.current) return;
       setPct(p.progress);
-      setMsg(p.message);
+      // 校验阶段没有百分比可报（哈希要算完才知道结果），给一句固定说明
+      setMsg(p.phase === "verify" ? t("正在校验安装包…") : p.message);
     });
     return () => {
       void un.then((f) => f());
     };
-  }, []);
+  }, [t]);
 
   const runCheck = useCallback(
     async (force: boolean) => {
@@ -208,7 +228,8 @@ export default function UpdateSection({ info, onCheck, settings, onPatch, onToas
   /** 仅下载：只落盘，把路径给用户，留一个安装按钮 */
   const downloadOnly = useCallback(async () => {
     const r = await download();
-    if (r) onToast("ok", t("安装包已保存到 {path}", { path: r.path }));
+    // 没校验过就别用「成功」的绿色提示，那是两件事
+    if (r) onToast(r.verify.verified ? "ok" : "info", t("安装包已保存到 {path}", { path: r.path }));
   }, [download, onToast, t]);
 
   const installSaved = useCallback(async () => {
@@ -325,13 +346,18 @@ export default function UpdateSection({ info, onCheck, settings, onPatch, onToas
           )}
 
           {saved && !downloading && (
-            <p className="upd__saved">
-              {t("已下载 {name}（{size}），保存在 {path}", {
-                name: saved.asset,
-                size: formatSize(saved.size),
-                path: saved.path,
-              })}
-            </p>
+            <>
+              <p className="upd__saved">
+                {t("已下载 {name}（{size}），保存在 {path}", {
+                  name: saved.asset,
+                  size: formatSize(saved.size),
+                  path: saved.path,
+                })}
+              </p>
+              <p className={saved.verify.verified ? "upd__ok" : "upd__warn"}>
+                {verifyLabel(saved.verify)}
+              </p>
+            </>
           )}
 
           {skipped && (

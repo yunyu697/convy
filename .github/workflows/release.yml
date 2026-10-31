@@ -188,6 +188,32 @@ jobs:
             exit 1
           fi
 
+      # 应用内更新靠这个文件确认安装包没被改过（见 src-tauri/src/updater.rs 的
+      # 「完整性校验」一节）。哈希必须由 CI 在打包之后当场生成：若改成下载时现算，
+      # 就等于用文件自己校验自己，毫无意义。
+      #
+      # 这里的断言不是装饰：应用端对「清单里找不到自己的名字」是硬失败的，
+      # 一旦清单和产物对不上，所有用户都会卡在更新这一步。所以要在发版时红，
+      # 而不是等到用户点「更新」才报错。
+      - name: 生成 SHA256SUMS
+        run: |
+          set -euo pipefail
+          cd all-artifacts
+          : > SHA256SUMS
+          for f in *; do
+            if [ ! -f "$f" ]; then continue; fi
+            if [ "$f" = "SHA256SUMS" ]; then continue; fi
+            sha256sum "$f" >> SHA256SUMS
+          done
+          lines=$(wc -l < SHA256SUMS)
+          files=$(find . -maxdepth 1 -type f ! -name SHA256SUMS | wc -l)
+          echo "清单 $lines 行 / 产物 $files 个"
+          if [ "$lines" -ne "$files" ]; then
+            echo "::error::SHA256SUMS 行数与产物数不一致"
+            exit 1
+          fi
+          cat SHA256SUMS
+
       # 应用里「设置 → 更新日志」显示的就是 Release 正文，所以正文得是给人读的。
       # GitHub 自动生成的说明靠 PR 归纳，而这个仓库直接往 master 提交，
       # 生成出来常常只有一行 Full Changelog 链接。改为从 CHANGELOG.md 取本版一节；

@@ -546,6 +546,11 @@ const dict: Record<string, string> = {
   "已用系统默认程序打开安装包": "Se abrió el instalador con la app predeterminada",
   "。": ".",
   "，": ", ",
+  "已校验 SHA-256": "SHA-256 verificado",
+  "已校验 SHA-256（校验值经镜像获取，保护有限）": "SHA-256 verificado (suma obtenida vía espejo: protección limitada)",
+  "未校验：这个版本没有发布校验文件": "Sin verificar: esta versión no incluye archivo de sumas",
+  "未校验": "Sin verificar",
+  "正在校验安装包…": "Verificando el instalador…",
 };
 
 export default dict;

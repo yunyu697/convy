@@ -3644,6 +3644,36 @@ code {
   word-break: break-all;
 }
 
+/* 校验结论：通过是「绿」，未校验是「黄」而不是红 —— 没校验不等于文件有问题，
+   但它确实比校验过弱，颜色要能区分这两件事 */
+.upd__ok,
+.upd__warn {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.55;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.upd__ok {
+  color: var(--ok);
+}
+
+.upd__warn {
+  color: var(--warn);
+}
+
+.upd__ok::before,
+.upd__warn::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  flex: none;
+}
+
 .upd__foot {
   display: flex;
   gap: 8px;
