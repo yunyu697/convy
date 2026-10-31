@@ -105,12 +105,13 @@ jobs:
         run: npm run app:build -- ${{ matrix.build_args }}
 
       # 通用：把 bundle 产物收进 release/
+      # 注意：`cp -t` 是 GNU 专属，macOS 的 BSD cp 不支持，必须用 `cp {} dir \;`
       - name: 收集安装包
         shell: bash
         run: |
           mkdir -p release
-          find src-tauri/target/release/bundle -type f -exec cp -t release/ {} + 2>/dev/null || true
-          ls -la release
+          find src-tauri/target/release/bundle -type f -exec cp {} release/ \;
+          ls -l release
 
       # Windows 额外打包便携版（exe + 已声明的 resources）
       - name: 打包 Windows 便携 zip
@@ -123,7 +124,7 @@ jobs:
           New-Item -ItemType Directory -Force -Path $tmp/resources/engines | Out-Null
           Copy-Item src-tauri/engines/README.md -Destination $tmp/resources/engines/ -ErrorAction SilentlyContinue
           Compress-Archive -Path $tmp/* -DestinationPath release/Convy-portable-win64.zip
-          ls -la release
+          Get-ChildItem release
 
       # Linux 额外打包裸二进制（供不想装包管理器的用户直接跑）
       - name: 打包 Linux 裸二进制
