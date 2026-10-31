@@ -110,11 +110,16 @@ jobs:
       # 注意 1：`cp -t` 是 GNU 专属，macOS 的 BSD cp 不支持，必须用 `cp {} dir \;`
       # 注意 2：显式 --target 构建时 bundle 在 target/<triple>/release/bundle/ 下，
       #         用 -path 通配同时覆盖 target/release/bundle 与 target/<triple>/release/bundle
+      # 注意 3：bundle 目录里有 AppImage/deb 打包的中间产物（AppDir 里的 .so 等），
+      #         必须按扩展名白名单过滤，否则发布时会传一堆垃圾库文件
       - name: 收集安装包
         shell: bash
         run: |
           mkdir -p release
-          find src-tauri/target -path '*/release/bundle/*' -type f -exec cp {} release/ \;
+          find src-tauri/target -path '*/release/bundle/*' -type f \
+            \( -name '*.msi' -o -name '*.exe' -o -name '*.dmg' \
+               -o -name '*.deb' -o -name '*.rpm' -o -name '*.AppImage' \) \
+            -exec cp {} release/ \;
           ls -l release
 
       # Windows 额外打包便携版（exe + 已声明的 resources）
