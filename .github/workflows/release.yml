@@ -157,19 +157,36 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
+      # checkout 必须排在 download-artifact **之前**。
+      # 它默认 clean: true，日志里是「Deleting the contents of ...」—— 会把工作区整个清空。
+      # v1.2.1 首发时放在后面，于是 4 个刚下载好的产物被删掉，
+      # 发布步骤只拿到 `Pattern 'all-artifacts/*' does not match any files`，
+      # 发出去一个 0 产物的 Release。
+      - uses: actions/checkout@v5
+        with:
+          # 要算「上一版是哪个 tag」，浅克隆拿不到 tag 历史
+          fetch-depth: 0
+
       - name: 下载全部产物
         uses: actions/download-artifact@v4
         with:
           path: all-artifacts
           merge-multiple: true
 
-      # 注意：这个 job 只下载了产物，工作区里并没有仓库文件 —— 不 checkout 的话
-      # 下面读 CHANGELOG.md 会直接 "No such file or directory"。v1.2.0 首发时就踩了这个坑，
-      # awk 的报错被 `|| true` 吞掉，于是悄悄走了「自动生成说明」的回退分支。
-      - uses: actions/checkout@v5
-        with:
-          # 要算「上一版是哪个 tag」，浅克隆拿不到 tag 历史
-          fetch-depth: 0
+      # 护栏：产物为空时直接红，而不是发一个 0 附件的 Release。
+      # v1.2.1 首发时就是这个样子 —— 发布步骤报的是
+      # `Pattern 'all-artifacts/*' does not match any files`，但动作本身仍然成功，
+      # 于是一个没有安装包的 Release 被推到了 latest 上。
+      - name: 检查产物不为空
+        run: |
+          set -euo pipefail
+          n=$(find all-artifacts -type f | wc -l)
+          echo "产物文件数：$n"
+          find all-artifacts -type f -printf '  %f\n' | sort
+          if [ "$n" -eq 0 ]; then
+            echo "::error::没有拿到任何安装包，拒绝发布空 Release"
+            exit 1
+          fi
 
       # 应用里「设置 → 更新日志」显示的就是 Release 正文，所以正文得是给人读的。
       # GitHub 自动生成的说明靠 PR 归纳，而这个仓库直接往 master 提交，
