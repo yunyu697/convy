@@ -2,6 +2,10 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type {
   AddResult,
+  AppMirror,
+  AppMirrorTest,
+  AppUpdateInfo,
+  AppUpdateProgress,
   Domain,
   EngineCheck,
   EngineProgress,
@@ -9,11 +13,13 @@ import type {
   EngineStatus,
   EngineUpdateResult,
   HistoryEntry,
+  InstallOutcome,
   Job,
   MirrorTest,
   Preset,
   SelfCheckItem,
   Settings,
+  UpdateDownload,
 } from "./types";
 
 export const api = {
@@ -62,6 +68,14 @@ export const api = {
     invoke<void>("engine_remove_mirror", { id, url }),
   engineRollback: (id: string, version: string) =>
     invoke<void>("engine_rollback", { id, version }),
+
+  // ---- 应用更新
+  appUpdateCheck: (force: boolean) => invoke<AppUpdateInfo>("app_update_check", { force }),
+  appUpdateDownload: () => invoke<UpdateDownload>("app_update_download"),
+  appUpdateInstall: (path: string) =>
+    invoke<InstallOutcome>("app_update_install", { path }),
+  appUpdateMirrors: () => invoke<AppMirror[]>("app_update_mirrors"),
+  appUpdateTestMirrors: () => invoke<AppMirrorTest[]>("app_update_test_mirrors"),
 };
 
 export const events = {
@@ -79,4 +93,6 @@ export const events = {
     listen("engines:changed", () => cb()),
   queueDone: (cb: () => void): Promise<UnlistenFn> =>
     listen("queue:done", () => cb()),
+  appUpdateProgress: (cb: (payload: AppUpdateProgress) => void): Promise<UnlistenFn> =>
+    listen<AppUpdateProgress>("app:update-progress", (e) => cb(e.payload)),
 };

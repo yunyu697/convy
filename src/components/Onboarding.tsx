@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api, events } from "../api";
+import { t, useT } from "../i18n";
 import { DOMAIN_META, type Domain, type EngineStatus } from "../types";
 
 /** 与 App.tsx 里 Toast 的 kind 保持一致（那边是私有 interface，不对外导出） */
@@ -34,10 +35,10 @@ const DOMAINS: Domain[] = ["video", "audio", "image", "ebook", "document"];
  * 后两段若继续显示「下载中 87%」会让人以为卡住了，所以按阶段换文案。
  */
 function busyLabel(p: { phase: string; pct: number } | null): string {
-  if (!p) return "准备中…";
-  if (p.phase === "verify") return "校验中…";
-  if (p.phase === "extract") return "解压中…";
-  return `下载中 ${Math.round(p.pct * 100)}%`;
+  if (!p) return t("准备中…");
+  if (p.phase === "verify") return t("校验中…");
+  if (p.phase === "extract") return t("解压中…");
+  return t("下载中 {pct}%", { pct: Math.round(p.pct * 100) });
 }
 
 interface Props {
@@ -48,6 +49,7 @@ interface Props {
 }
 
 export default function Onboarding({ onClose, onPickFile, onToast }: Props) {
+  const t = useT();
   const [step, setStep] = useState(0);
   const [picked, setPicked] = useState<Domain[]>([]);
   const [engines, setEngines] = useState<EngineStatus[]>([]);
@@ -102,7 +104,7 @@ export default function Onboarding({ onClose, onPickFile, onToast }: Props) {
     setBusyId(e.id);
     try {
       await api.engineUpdate(e.id, null);
-      onToast("ok", `${e.label} 已安装并启用`);
+      onToast("ok", t("{name} 已安装并启用", { name: e.label }));
       await refreshEngines();
     } catch (err) {
       onToast("err", String(err));
@@ -118,15 +120,15 @@ export default function Onboarding({ onClose, onPickFile, onToast }: Props) {
 
   return (
     <div className="onb">
-      <div className="onb__card" role="dialog" aria-modal="true" aria-label="首次使用引导">
+      <div className="onb__card" role="dialog" aria-modal="true" aria-label={t("首次使用引导")}>
         <header className="onb__head">
           <div className="onb__brand">
             <span className="onb__logo" aria-hidden>
               ⇄
             </span>
             <div>
-              <h1 className="onb__title">欢迎使用 Convy</h1>
-              <p className="onb__sub">三步就能转第一个文件，大约一分钟</p>
+              <h1 className="onb__title">{t("欢迎使用 Convy")}</h1>
+              <p className="onb__sub">{t("三步就能转第一个文件，大约一分钟")}</p>
             </div>
           </div>
           <ol className="onb__steps">
@@ -138,7 +140,7 @@ export default function Onboarding({ onClose, onPickFile, onToast }: Props) {
                 }`}
               >
                 <span className="onb__stepnum">{i < step ? "✓" : i + 1}</span>
-                {s}
+                {t(s)}
               </li>
             ))}
           </ol>
@@ -147,7 +149,7 @@ export default function Onboarding({ onClose, onPickFile, onToast }: Props) {
         <div className="onb__body">
           {step === 0 && (
             <>
-              <p className="onb__lead">你主要想转哪一类文件？可以多选。</p>
+              <p className="onb__lead">{t("你主要想转哪一类文件？可以多选。")}</p>
               <div className="onb__domains">
                 {DOMAINS.map((d) => {
                   const on = picked.includes(d);
@@ -162,14 +164,14 @@ export default function Onboarding({ onClose, onPickFile, onToast }: Props) {
                       <span className="onb__domainicon" aria-hidden>
                         {meta.icon}
                       </span>
-                      <strong>{meta.label}</strong>
-                      <span className="onb__domaindesc">{meta.desc}</span>
+                      <strong>{t(meta.label)}</strong>
+                      <span className="onb__domaindesc">{t(meta.desc)}</span>
                     </button>
                   );
                 })}
               </div>
               <p className="onb__note">
-                只选你用得上的，没选的引擎之后也能在「引擎管理」里随时补装。
+                {t("只选你用得上的，没选的引擎之后也能在「引擎管理」里随时补装。")}
               </p>
             </>
           )}
@@ -178,12 +180,12 @@ export default function Onboarding({ onClose, onPickFile, onToast }: Props) {
             <>
               {needed.length === 0 ? (
                 <p className="onb__lead">
-                  你没有选择用途，可以跳过这一步 —— 需要时去「引擎管理」装引擎即可。
+                  {t("你没有选择用途，可以跳过这一步 —— 需要时去「引擎管理」装引擎即可。")}
                 </p>
               ) : (
                 <>
                   <p className="onb__lead">
-                    这些引擎用来完成你刚选的任务。已经装好的会显示 ✓。
+                    {t("这些引擎用来完成你刚选的任务。已经装好的会显示 ✓。")}
                   </p>
                   <div className="onb__engines">
                     {needed.map((id) => {
@@ -194,15 +196,16 @@ export default function Onboarding({ onClose, onPickFile, onToast }: Props) {
                           <div className="onb__enginemain">
                             <strong>{e?.label ?? id}</strong>
                             <span className="onb__enginedesc">
-                              {e?.sizeHint ?? e?.description ?? "正在检测…"}
+                              {e?.sizeHint ?? e?.description ?? t("正在检测…")}
                             </span>
                           </div>
                           <div className="onb__engineact">
                             {!e ? (
-                              <span className="onb__tag">检测中…</span>
+                              <span className="onb__tag">{t("检测中…")}</span>
                             ) : e.installed ? (
                               <span className="onb__tag onb__tag--ok">
-                                ✓ 已就绪{e.activeVersion ? ` · ${e.activeVersion}` : ""}
+                                ✓ {t("已就绪")}
+                                {e.activeVersion ? ` · ${e.activeVersion}` : ""}
                               </span>
                             ) : e.managed ? (
                               <button
@@ -210,17 +213,17 @@ export default function Onboarding({ onClose, onPickFile, onToast }: Props) {
                                 onClick={() => void install(e)}
                                 disabled={busyId !== null}
                               >
-                                {busyId === id ? busyLabel(pr) : "一键下载"}
+                                {busyId === id ? busyLabel(pr) : t("一键下载")}
                               </button>
                             ) : e.homepage ? (
                               <button
                                 className="btn btn--ghost"
                                 onClick={() => void api.openUrl(e.homepage!)}
                               >
-                                去官网安装
+                                {t("去官网安装")}
                               </button>
                             ) : (
-                              <span className="onb__tag">需手动安装</span>
+                              <span className="onb__tag">{t("需手动安装")}</span>
                             )}
                           </div>
                         </div>
@@ -229,8 +232,11 @@ export default function Onboarding({ onClose, onPickFile, onToast }: Props) {
                   </div>
                   <p className="onb__note">
                     {readyCount > 0
-                      ? `已就绪 ${readyCount} / ${needed.length}。没装完也能先用其他格式，随时回来补。`
-                      : "引擎体积较大（FFmpeg 约 115 MB），可以先跳过，之后在「引擎管理」里装。"}
+                      ? t("已就绪 {ok} / {total}。没装完也能先用其他格式，随时回来补。", {
+                          ok: readyCount,
+                          total: needed.length,
+                        })
+                      : t("引擎体积较大（FFmpeg 约 115 MB），可以先跳过，之后在「引擎管理」里装。")}
                   </p>
                 </>
               )}
@@ -240,20 +246,20 @@ export default function Onboarding({ onClose, onPickFile, onToast }: Props) {
           {step === 2 && (
             <>
               <p className="onb__lead">
-                把文件拖进主界面任意位置就能开始，也可以直接选一个试试。
+                {t("把文件拖进主界面任意位置就能开始，也可以直接选一个试试。")}
               </p>
               <div className="onb__final">
                 <button className="btn btn--primary" onClick={onPickFile}>
-                  选择一个文件
+                  {t("选择一个文件")}
                 </button>
                 <button className="btn btn--ghost" onClick={finish}>
-                  先看看界面
+                  {t("先看看界面")}
                 </button>
               </div>
               <ul className="onb__tips">
-                <li>文件夹也能直接拖进来，会递归扫描里面的受支持格式</li>
-                <li>转换参数有「快速调整」条，改编码或质量不用翻完整面板</li>
-                <li>失败的任务行上有「重试」，不用删了重新加</li>
+                <li>{t("文件夹也能直接拖进来，会递归扫描里面的受支持格式")}</li>
+                <li>{t("转换参数有「快速调整」条，改编码或质量不用翻完整面板")}</li>
+                <li>{t("失败的任务行上有「重试」，不用删了重新加")}</li>
               </ul>
             </>
           )}
@@ -261,21 +267,21 @@ export default function Onboarding({ onClose, onPickFile, onToast }: Props) {
 
         <footer className="onb__foot">
           <button className="linkbtn" onClick={finish}>
-            跳过引导
+            {t("跳过引导")}
           </button>
           <div className="onb__nav">
             {step > 0 && (
               <button className="btn btn--ghost" onClick={() => setStep((s) => s - 1)}>
-                上一步
+                {t("上一步")}
               </button>
             )}
             {step < 2 ? (
               <button className="btn btn--primary" onClick={() => setStep((s) => s + 1)}>
-                下一步
+                {t("下一步")}
               </button>
             ) : (
               <button className="btn btn--primary" onClick={finish}>
-                开始使用
+                {t("开始使用")}
               </button>
             )}
           </div>

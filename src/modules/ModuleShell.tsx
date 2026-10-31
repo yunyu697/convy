@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import DropZone from "../components/DropZone";
 import JobRow from "../components/JobRow";
 import PresetBar from "../components/PresetBar";
+import { useT } from "../i18n";
 import { api } from "../api";
 import { DOMAIN_META, type Domain, type Job, type Preset } from "../types";
 
@@ -76,6 +77,7 @@ export default function ModuleShell(props: ModuleShellProps) {
     busy,
   } = props;
 
+  const t = useT();
   const meta = DOMAIN_META[domain];
   const list = jobs.filter((j) => j.domain === domain);
   const pending = list.filter((j) => j.status === "pending").length;
@@ -121,7 +123,7 @@ export default function ModuleShell(props: ModuleShellProps) {
               {meta.icon}
             </span>
             <div>
-              <h2 className="panelhead__title">{meta.label}参数</h2>
+              <h2 className="panelhead__title">{t("{name}参数", { name: t(meta.label) })}</h2>
               <p className="panelhead__desc">{meta.desc}</p>
             </div>
           </div>
@@ -131,7 +133,7 @@ export default function ModuleShell(props: ModuleShellProps) {
               <span aria-hidden>⚠</span>
               <div>
                 <strong>{engineMissing}</strong>
-                <p>可在「引擎管理」中一键下载并启用。</p>
+                <p>{t("可在「引擎管理」中一键下载并启用。")}</p>
               </div>
             </div>
           )}
@@ -144,24 +146,24 @@ export default function ModuleShell(props: ModuleShellProps) {
           <DropZone
             onPick={onPick}
             onPickFolder={onPickFolder}
-            title={`拖入${meta.label}文件或文件夹`}
-            hint="支持批量与子目录"
+            title={t("拖入{name}文件或文件夹", { name: t(meta.label) })}
+            hint={t("支持批量与子目录")}
           />
 
           <div className="queue">
             <div className="queue__head">
               <div className="queue__counts">
                 <span className="queue__count">
-                  共 <b>{list.length}</b> 项
+                  {t("共")} <b>{list.length}</b> {t("项")}
                 </span>
                 {pending > 0 && (
                   <span className="queue__count queue__count--pending">
-                    待处理 <b>{pending}</b>
+                    {t("待处理")} <b>{pending}</b>
                   </span>
                 )}
                 {done > 0 && (
                   <span className="queue__count queue__count--done">
-                    已完成 <b>{done}</b>
+                    {t("已完成")} <b>{done}</b>
                   </span>
                 )}
               </div>
@@ -171,14 +173,14 @@ export default function ModuleShell(props: ModuleShellProps) {
                   onClick={onClearFinished}
                   disabled={done === 0}
                 >
-                  清理已完成
+                  {t("清理已完成")}
                 </button>
                 <button
                   className="btn btn--primary"
                   onClick={onStart}
                   disabled={pending === 0 || busy}
                 >
-                  {busy ? "转换中…" : `开始转换${pending ? ` (${pending})` : ""}`}
+                  {busy ? t("转换中…") : `${t("开始转换")}${pending ? ` (${pending})` : ""}`}
                 </button>
               </div>
             </div>
@@ -189,8 +191,8 @@ export default function ModuleShell(props: ModuleShellProps) {
                   <span className="queue__emptyicon" aria-hidden>
                     {meta.icon}
                   </span>
-                  <p>还没有{meta.label}文件</p>
-                  <span>拖入文件后会出现在这里</span>
+                  <p>{t("还没有{name}文件", { name: t(meta.label) })}</p>
+                  <span>{t("拖入文件后会出现在这里")}</span>
                 </div>
               ) : (
                 <>
@@ -212,7 +214,7 @@ export default function ModuleShell(props: ModuleShellProps) {
                       className="queue__more"
                       onClick={() => setShown((n) => Math.min(n + PAGE, list.length))}
                     >
-                      已显示 {shown} / {list.length} 项 · 继续滚动或点击加载更多
+                      {t("已显示 {shown} / {total} 项 · 继续滚动或点击加载更多", { shown, total: list.length })}
                     </button>
                   )}
                 </>
@@ -227,14 +229,15 @@ export default function ModuleShell(props: ModuleShellProps) {
 
 /** 模块顶部的「打开输出目录」等通用按钮组 */
 export function OutputActions({ path }: { path?: string | null }) {
+  const t = useT();
   if (!path) return null;
   return (
     <div className="outputactions">
       <button className="btn btn--ghost" onClick={() => api.openPath(path)}>
-        打开
+        {t("打开")}
       </button>
       <button className="btn btn--ghost" onClick={() => api.revealOutput(path)}>
-        所在文件夹
+        {t("所在文件夹")}
       </button>
     </div>
   );

@@ -18,7 +18,9 @@ use crate::engines::registry::version_cmp;
 use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
+use std::path::Path;
 use std::time::{Duration, Instant};
+use tokio::io::AsyncWriteExt;
 
 /// 仓库地址。release.yml 就是往这里发包的，搬家时改这两个常量即可。
 const REPO_OWNER: &str = "yunyu697";
@@ -288,6 +290,16 @@ fn asset_kind(name: &str) -> &'static str {
         "msi"
     } else if lower.ends_with(".exe") {
         "nsis"
+    } else if lower.ends_with(".dmg") {
+        "dmg"
+    } else if lower.ends_with(".appimage") {
+        "appimage"
+    } else if lower.ends_with(".deb") {
+        "deb"
+    } else if lower.ends_with(".rpm") {
+        "rpm"
+    } else if lower.ends_with(".tar.gz") {
+        "tar-gz"
     } else if lower.ends_with(".zip") {
         "zip"
     } else {
@@ -442,6 +454,241 @@ pub fn is_due(last_check_at: u64, freq: &str) -> bool {
     }
     let now = crate::job::now_ms();
     last_check_at == 0 || now.saturating_sub(last_check_at) >= gap
+}
+
+// ---------------------------------------------------------------- 选包与下载
+
+/// 当前平台优先选择的安装包类型，按顺序尝试。
+///
+/// Windows 优先 NSIS（`.exe`）而不是 MSI：Tauri 的 NSIS 包支持 `/S` 静默安装，
+/// 而 MSI 走 msiexec 需要提权弹 UAC，体验差一截。
+pub fn preferred_kinds() -> &'static [&'static str] {
+    #[cfg(windows)]
+    {
+        &["nsis", "msi", "zip"]
+    }
+    #[cfg(target_os = "macos")]
+    {
+        &["dmg", "zip"]
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        &["appimage", "deb", "rpm", "tar-gz"]
+    }
+}
+
+/// 从 Release 的资产里挑出本平台该下的那个。
+pub fn pick_asset(assets: &[ReleaseAsset]) -> Option<&ReleaseAsset> {
+    preferred_kinds()
+        .iter()
+        .find_map(|kind| assets.iter().find(|a| a.kind == *kind))
+}
+
+/// 下载安装包。返回实际生效的镜像名。
+///
+/// 与引擎下载同样的策略：按镜像顺序逐个试，失败就换下一个。
+/// 这里没有做断点续传 —— 安装包只有几 MB，重下比维护续传状态便宜。
+pub async fn download_asset(
+    asset: &ReleaseAsset,
+    dest: &Path,
+    pref_mirror: &str,
+    on_progress: impl Fn(f64, String) + Send + Sync,
+) -> Result<String, String> {
+    let order = mirror_order(pref_mirror).await;
+    let mut last_err = String::from("没有可用的下载源");
+
+    for m in &order {
+        let url = apply_prefix(&m.prefix, &asset.url);
+        on_progress(0.0, format!("正在连接 {}…", m.name));
+        match download_stream(&url, dest, asset.size, &on_progress).await {
+            Ok(()) => {
+                on_progress(1.0, "下载完成".to_string());
+                return Ok(m.name.clone());
+            }
+            Err(e) => {
+                // 半个文件留在磁盘上没有任何价值，下一次尝试也从零开始
+                let _ = tokio::fs::remove_file(dest).await;
+                last_err = format!("{}：{}", m.name, e);
+            }
+        }
+    }
+    Err(last_err)
+}
+
+async fn download_stream(
+    url: &str,
+    dest: &Path,
+    size_hint: u64,
+    on_progress: &(impl Fn(f64, String) + Send + Sync),
+) -> Result<(), String> {
+    let client = reqwest::Client::builder()
+        // 安装包可能几十 MB，别用检查用的 12 秒超时
+        .timeout(Duration::from_secs(30 * 60))
+        .user_agent(USER_AGENT)
+        .build()
+        .map_err(|e| format!("创建请求失败：{e}"))?;
+
+    let resp = client.get(url).send().await.map_err(|e| {
+        if e.is_timeout() {
+            "下载超时".to_string()
+        } else {
+            format!("无法连接下载服务器：{e}")
+        }
+    })?;
+
+    let status = resp.status();
+    if !status.is_success() {
+        return Err(format!("下载服务器返回 HTTP {}", status.as_u16()));
+    }
+
+    // content-length 优先，没有就用 Release 里登记的大小
+    let total = resp
+        .content_length()
+        .filter(|n| *n > 0)
+        .unwrap_or(size_hint);
+
+    if let Some(parent) = dest.parent() {
+        let _ = tokio::fs::create_dir_all(parent).await;
+    }
+    let mut file = tokio::fs::File::create(dest)
+        .await
+        .map_err(|e| format!("无法创建文件：{e}"))?;
+
+    let mut stream = resp.bytes_stream();
+    let mut got: u64 = 0;
+    let mut last_pct: i32 = -1;
+
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.map_err(|e| format!("下载中断：{e}"))?;
+        file.write_all(&chunk)
+            .await
+            .map_err(|e| format!("写入失败：{e}"))?;
+        got += chunk.len() as u64;
+
+        if total > 0 {
+            let pct = ((got as f64 / total as f64) * 100.0).round() as i32;
+            if pct != last_pct {
+                last_pct = pct;
+                on_progress(
+                    got as f64 / total as f64,
+                    format!("{} / {}", human_size(got), human_size(total)),
+                );
+            }
+        }
+    }
+
+    file.flush().await.map_err(|e| format!("写入失败：{e}"))?;
+
+    // 服务器给了长度却收得少，说明连接中途断了 —— 别把半个包当成功
+    if total > 0 && got < total {
+        return Err(format!(
+            "下载不完整（{} / {}）",
+            human_size(got),
+            human_size(total)
+        ));
+    }
+    Ok(())
+}
+
+fn human_size(bytes: u64) -> String {
+    const UNITS: [&str; 4] = ["B", "KB", "MB", "GB"];
+    let mut v = bytes as f64;
+    let mut i = 0;
+    while v >= 1024.0 && i < UNITS.len() - 1 {
+        v /= 1024.0;
+        i += 1;
+    }
+    if i == 0 {
+        format!("{bytes} B")
+    } else {
+        format!("{v:.1} {}", UNITS[i])
+    }
+}
+
+// ---------------------------------------------------------------- 安装
+
+/// 安装动作的结论，前端据此决定提示什么。
+///
+/// 只回一个 `mode`，不回文案：文案要跟着界面语言走，而语言是前端才知道的事。
+/// 早先这里带过一句中文 `message`，界面切成英/日/西之后它仍然是中文，
+/// 于是把这句话的措辞权交还给前端。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InstallOutcome {
+    /// silent = 已在后台静默安装（应用需要退出）；opened = 已交给系统默认程序
+    pub mode: String,
+}
+
+/// 启动安装。
+///
+/// 平台差异是硬约束，不假装统一：
+/// - Windows：NSIS 用 `/S` 静默装，MSI 走 `msiexec /qn`，装完自己重启；
+/// - macOS：`.dmg` 只能挂载后由用户拖进「应用程序」，没有免签名的静默通道；
+/// - Linux：`.deb` / `.rpm` 需要 root，交给系统包管理器弹窗。
+///
+/// 所以返回值里带 `mode`，前端对 silent 和 opened 的文案是两套。
+pub fn install(path: &Path) -> Result<InstallOutcome, String> {
+    if !path.exists() {
+        return Err("安装包不存在，请重新下载".to_string());
+    }
+
+    #[cfg(windows)]
+    {
+        let lower = path.to_string_lossy().to_ascii_lowercase();
+        if lower.ends_with(".msi") {
+            let mut cmd = std::process::Command::new("msiexec");
+            cmd.arg("/i").arg(path).args(["/qn", "/norestart"]);
+            crate::spawn::silent(cmd)
+                .spawn()
+                .map_err(|e| format!("无法启动安装程序：{e}"))?;
+        } else if lower.ends_with(".exe") {
+            // Tauri NSIS 安装器支持 /S 静默；装完会自己拉起新版本
+            let mut cmd = std::process::Command::new(path);
+            cmd.arg("/S");
+            crate::spawn::silent(cmd)
+                .spawn()
+                .map_err(|e| format!("无法启动安装程序：{e}"))?;
+        } else {
+            return open_with_system(path).map(|_| InstallOutcome {
+                mode: "opened".into(),
+            });
+        }
+        Ok(InstallOutcome {
+            mode: "silent".into(),
+        })
+    }
+
+    #[cfg(not(windows))]
+    {
+        open_with_system(path)?;
+        Ok(InstallOutcome {
+            mode: "opened".into(),
+        })
+    }
+}
+
+#[cfg(not(windows))]
+fn open_with_system(path: &Path) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    let prog = "open";
+    #[cfg(all(unix, not(target_os = "macos")))]
+    let prog = "xdg-open";
+
+    std::process::Command::new(prog)
+        .arg(path)
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| format!("无法打开安装包：{e}"))
+}
+
+#[cfg(windows)]
+fn open_with_system(path: &Path) -> Result<(), String> {
+    let mut cmd = std::process::Command::new("explorer");
+    cmd.arg(path);
+    crate::spawn::silent(cmd)
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| format!("无法打开安装包：{e}"))
 }
 
 #[cfg(test)]

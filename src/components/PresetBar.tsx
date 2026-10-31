@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useT } from "../i18n";
 import type { Domain, Preset } from "../types";
 
 export default function PresetBar({
@@ -16,6 +17,7 @@ export default function PresetBar({
   onDelete: (name: string) => void;
   activeName: string | null;
 }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const [naming, setNaming] = useState(false);
   const [name, setName] = useState("");
@@ -36,9 +38,9 @@ export default function PresetBar({
         type="button"
         className="presetbar__toggle"
         onClick={() => setOpen(!open)}
-        title="展开/收起预设"
+        title={t("展开/收起预设")}
       >
-        <span className="presetbar__label">预设</span>
+        <span className="presetbar__label">{t("预设")}</span>
         <span className="presetbar__count">{list.length}</span>
         {activeName && <span className="presetbar__active">{activeName}</span>}
         <span className="presetbar__arrow" aria-hidden>
@@ -55,7 +57,7 @@ export default function PresetBar({
                   type="button"
                   className={`presetchip__main${activeName === p.name ? " is-active" : ""}`}
                   onClick={() => onApply(p)}
-                  title={p.builtin ? "内置预设" : "自定义预设"}
+                  title={p.builtin ? t("内置预设") : t("自定义预设")}
                 >
                   {p.name}
                 </button>
@@ -63,7 +65,7 @@ export default function PresetBar({
                   <button
                     type="button"
                     className="presetchip__del"
-                    title="删除此预设"
+                    title={t("删除此预设")}
                     onClick={() => onDelete(p.name)}
                   >
                     ×
@@ -77,7 +79,7 @@ export default function PresetBar({
                 <input
                   autoFocus
                   value={name}
-                  placeholder="预设名称"
+                  placeholder={t("预设名称")}
                   onChange={(e) => setName(e.target.value)}
                   onKeyDown={(e) => {
                     if (e.key === "Enter") submit();
@@ -93,9 +95,9 @@ export default function PresetBar({
                 type="button"
                 className="presetchip presetchip--new"
                 onClick={() => setNaming(true)}
-                title="把当前设置保存为预设"
+                title={t("把当前设置保存为预设")}
               >
-                ＋ 保存当前
+                ＋ {t("保存当前")}
               </button>
             )}
           </div>

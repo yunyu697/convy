@@ -1,4 +1,5 @@
 import { memo, useEffect } from "react";
+import { useT } from "../i18n";
 import { api } from "../api";
 import { DOMAIN_META, STATUS_META, formatSize, type Job } from "../types";
 
@@ -32,6 +33,8 @@ function JobRow({
   onRetry,
   onChangeTarget,
 }: Props) {
+  const t = useT();
+
   useEffect(() => {
     void onTargets(job.sourceExt);
   }, [job.sourceExt, onTargets]);
@@ -69,7 +72,7 @@ function JobRow({
         </div>
         <div className="row__meta">
           {job.relDir && (
-            <span className="row__dir" title={`来自子文件夹：${job.relDir}`}>
+            <span className="row__dir" title={t("来自子文件夹：{dir}", { dir: job.relDir ?? "" })}>
               {job.relDir}
             </span>
           )}
@@ -79,7 +82,7 @@ function JobRow({
               <span className="row__dot">→</span>
               <b className="sizecmp__to">{formatSize(job.outputSize)}</b>
               {sizeCompare && (
-                <span className={`sizecmp ${sizeCompare.cls}`} title="输出相对源文件的大小变化">
+                <span className={`sizecmp ${sizeCompare.cls}`} title={t("输出相对源文件的大小变化")}>
                   {sizeCompare.text}
                 </span>
               )}
@@ -111,7 +114,7 @@ function JobRow({
           const opts = targets.filter((t) => g.exts.includes(t));
           if (!opts.length) return null;
           return (
-            <optgroup key={g.label} label={g.label}>
+            <optgroup key={g.label} label={t(g.label)}>
               {opts.map((t) => (
                 <option key={t} value={t}>
                   {t.toUpperCase()}
@@ -121,7 +124,7 @@ function JobRow({
           );
         })}
         {rest.length > 0 && (
-          <optgroup label="其他">
+          <optgroup label={t("其他")}>
             {rest.map((t) => (
               <option key={t} value={t}>
                 {t.toUpperCase()}
@@ -140,43 +143,43 @@ function JobRow({
         ) : job.status === "done" ? (
           <div className="row__actions">
             <button className="linkbtn" onClick={() => job.outputPath && api.openPath(job.outputPath)}>
-              打开
+              {t("打开")}
             </button>
             <button
               className="linkbtn"
               onClick={() => job.outputPath && api.revealOutput(job.outputPath)}
             >
-              所在文件夹
+              {t("所在文件夹")}
             </button>
           </div>
         ) : job.status === "failed" ? (
           <div className="row__actions">
-            <button className="linkbtn" onClick={() => onRetry(job.id)} title="用相同参数重新转换">
-              重试
+            <button className="linkbtn" onClick={() => onRetry(job.id)} title={t("用相同参数重新转换")}>
+              {t("重试")}
             </button>
             <span className="row__fail" title={job.error ?? ""}>
-              失败
+              {t("失败")}
             </span>
           </div>
         ) : job.status === "canceled" ? (
           <div className="row__actions">
-            <button className="linkbtn" onClick={() => onRetry(job.id)} title="重新入队">
-              重试
+            <button className="linkbtn" onClick={() => onRetry(job.id)} title={t("重新入队")}>
+              {t("重试")}
             </button>
             <span className="row__idle" style={{ color: status.color }}>
-              {status.label}
+              {t(status.label)}
             </span>
           </div>
         ) : (
           <span className="row__idle" style={{ color: status.color }}>
-            {status.label}
+            {t(status.label)}
           </span>
         )}
       </div>
 
       <button
         className="row__close"
-        title={locked ? "取消" : "移除"}
+        title={locked ? t("取消") : t("移除")}
         onClick={() => (locked ? onCancel(job.id) : onRemove(job.id))}
       >
         ×

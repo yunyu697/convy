@@ -292,11 +292,38 @@ pub struct GlobalSettings {
     /// 批量导入文件夹时，在输出目录下还原原有子目录层级
     #[serde(default = "default_true")]
     pub preserve_tree: bool,
+    /// 界面语言：system / zh-Hans / zh-Hant / en / ja / es
+    #[serde(default = "default_language")]
+    pub language: String,
+    /// 应用更新检查频率：startup / daily / weekly / monthly / never
+    #[serde(default = "default_update_freq")]
+    pub update_check_freq: String,
+    /// 上次检查应用更新的时间（毫秒）；0 = 从未检查
+    #[serde(default)]
+    pub last_update_check: u64,
+    /// 用户点了「跳过此版本」的版本号；空 = 没跳过
+    #[serde(default)]
+    pub skipped_version: String,
+    /// 更新源镜像 id；"auto" = 自动择优
+    #[serde(default = "default_update_mirror")]
+    pub update_mirror: String,
 }
 
 /// serde 的 default 需要无参函数，`bool::default()` 是 false，这里要 true。
 fn default_true() -> bool {
     true
+}
+
+fn default_language() -> String {
+    "system".into()
+}
+
+fn default_update_freq() -> String {
+    "startup".into()
+}
+
+fn default_update_mirror() -> String {
+    "auto".into()
 }
 
 impl Default for GlobalSettings {
@@ -309,6 +336,11 @@ impl Default for GlobalSettings {
             auto_check_update: true,
             overwrite: false,
             preserve_tree: true,
+            language: default_language(),
+            update_check_freq: default_update_freq(),
+            last_update_check: 0,
+            skipped_version: String::new(),
+            update_mirror: default_update_mirror(),
         }
     }
 }

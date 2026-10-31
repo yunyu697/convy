@@ -151,6 +151,16 @@ export interface GlobalSettings {
   overwrite: boolean;
   /** 批量导入文件夹时，在输出目录下还原原有子目录层级 */
   preserveTree: boolean;
+  /** 界面语言：system / zh-Hans / zh-Hant / en / ja / es */
+  language: string;
+  /** 应用更新检查频率：startup / daily / weekly / monthly / never */
+  updateCheckFreq: string;
+  /** 上次检查应用更新的时间（毫秒），0 = 从未检查 */
+  lastUpdateCheck: number;
+  /** 用户点了「跳过此版本」的版本号 */
+  skippedVersion: string;
+  /** 更新源镜像 id，auto = 自动择优 */
+  updateMirror: string;
 }
 
 export interface Settings {
@@ -249,6 +259,11 @@ export const DEFAULT_SETTINGS: Settings = {
     autoCheckUpdate: true,
     overwrite: false,
     preserveTree: true,
+    language: "system",
+    updateCheckFreq: "startup",
+    lastUpdateCheck: 0,
+    skippedVersion: "",
+    updateMirror: "auto",
   },
 };
 
@@ -371,6 +386,84 @@ export interface EngineProgress {
   progress: number;
   message: string;
 }
+
+// ------------------------------------------------------------ 应用更新
+
+/** Release 里的一个安装包 */
+export interface ReleaseAsset {
+  name: string;
+  url: string;
+  size: number;
+  /** nsis / msi / dmg / appimage / deb / rpm / zip / other */
+  kind: string;
+}
+
+export interface AppUpdateInfo {
+  currentVersion: string;
+  latestVersion: string | null;
+  updateAvailable: boolean;
+  /** Release 页面地址 */
+  htmlUrl: string | null;
+  publishedAt: string | null;
+  /** Release 正文，也就是发版时写的更新日志 */
+  notes: string;
+  assets: ReleaseAsset[];
+  mirrorName: string;
+  mirrorPrefix: string;
+  checkedAt: number;
+  /** 检查失败的原因；有值时不代表「已是最新」 */
+  error: string | null;
+  /** 因为「还没到下次检查时间」而跳过 */
+  skippedByInterval: boolean;
+  /** 用户之前选过「跳过此版本」 */
+  skippedByUser: boolean;
+}
+
+export interface UpdateDownload {
+  path: string;
+  version: string;
+  asset: string;
+  size: number;
+  mirror: string;
+}
+
+export interface InstallOutcome {
+  /** silent = 后台静默安装（应用会退出）；opened = 已交给系统默认程序 */
+  mode: "silent" | "opened";
+}
+
+export interface AppUpdateProgress {
+  phase: string;
+  progress: number;
+  message: string;
+  asset: string;
+  total: number;
+}
+
+export interface AppMirror {
+  id: string;
+  name: string;
+  /** 加速前缀，空 = 直连官方 */
+  prefix: string;
+  builtin: boolean;
+}
+
+export interface AppMirrorTest {
+  id: string;
+  name: string;
+  ok: boolean;
+  latencyMs: number | null;
+  message: string;
+}
+
+/** 更新检查频率 */
+export const UPDATE_FREQ: { id: string; label: string }[] = [
+  { id: "startup", label: "每次启动" },
+  { id: "daily", label: "每天" },
+  { id: "weekly", label: "每周" },
+  { id: "monthly", label: "每月" },
+  { id: "never", label: "从不" },
+];
 
 // ------------------------------------------------------------ 主题
 

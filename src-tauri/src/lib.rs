@@ -294,6 +294,11 @@ pub fn run() {
             commands::engine::engine_add_mirror,
             commands::engine::engine_remove_mirror,
             commands::engine::engine_rollback,
+            commands::update::app_update_check,
+            commands::update::app_update_download,
+            commands::update::app_update_install,
+            commands::update::app_update_mirrors,
+            commands::update::app_update_test_mirrors,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Convy");

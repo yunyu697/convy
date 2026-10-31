@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { api, events } from "./api";
+import { setLang, useT } from "./i18n";
 import { applyTargets, mergeSettings, pickStaleTargets } from "./logic";
 import { Sidebar, type ViewId } from "./components/Sidebar";
 import { TopBar } from "./components/TopBar";
@@ -20,6 +21,7 @@ import {
   ACCENTS,
   DEFAULT_SETTINGS,
   DOMAIN_META,
+  type AppUpdateInfo,
   type Domain,
   type EngineReport,
   type Job,
@@ -36,6 +38,7 @@ interface Toast {
 const DOMAIN_VIEWS: Domain[] = ["video", "audio", "image", "ebook", "document"];
 
 export default function App() {
+  const t = useT();
   const [view, setView] = useState<ViewId>("video");
   const [settings, setSettings] = useState<Settings | null>(null);
   const [presets, setPresets] = useState<Preset[]>([]);
@@ -112,7 +115,7 @@ export default function App() {
         settled = true;
         window.clearTimeout(watchdog);
         setSettings(DEFAULT_SETTINGS);
-        toast("err", `设置加载失败，已使用默认配置：${String(e)}`);
+        toast("err", t("设置加载失败，已使用默认配置：{err}", { err: String(e) }));
       });
     void api
       .listPresets()
@@ -142,6 +145,44 @@ export default function App() {
       `color-mix(in srgb, ${accent.color} 34%, transparent)`,
     );
   }, [settings?.global.theme, settings?.global.accent]);
+
+  // ---------------------------------------------------------- 语言
+  // setLang 是模块级的：切换后所有调用过 useT() 的组件都会重渲染，
+  // 不需要把语言一层层传下去。
+  useEffect(() => {
+    setLang(settings?.global.language);
+  }, [settings?.global.language]);
+
+  // ---------------------------------------------------------- 应用更新
+  const [update, setUpdate] = useState<AppUpdateInfo | null>(null);
+
+  const checkUpdate = useCallback(
+    async (force: boolean) => {
+      try {
+        const info = await api.appUpdateCheck(force);
+        setUpdate(info);
+        return info;
+      } catch (e) {
+        toast("err", String(e));
+        return null;
+      }
+    },
+    [toast],
+  );
+
+  // 启动时按「检查频率」查一次。用 ref 兜住，避免设置每次变化都重新查
+  // （settings 对象在改任何一项时都会变）。
+  const updateChecked = useRef(false);
+  useEffect(() => {
+    if (!settings || updateChecked.current) return;
+    if (settings.global.updateCheckFreq === "never") return;
+    updateChecked.current = true;
+    void checkUpdate(false).then((info) => {
+      if (info?.updateAvailable && !info.skippedByUser) {
+        toast("info", t("发现新版本 {v}，可在设置中更新", { v: info.latestVersion ?? "" }));
+      }
+    });
+  }, [settings, checkUpdate, toast, t]);
 
   // ---------------------------------------------------------- 设置持久化
   const saveTimer = useRef<number | undefined>(undefined);
@@ -258,11 +299,13 @@ export default function App() {
           toast(
             "err",
             res.unsupported > 0
-              ? `文件夹里没有可转换的文件（跳过 ${res.unsupported} 个不支持的格式）`
-              : "文件夹里没有可转换的文件",
+              ? t("文件夹里没有可转换的文件（跳过 {n} 个不支持的格式）", {
+                  n: res.unsupported,
+                })
+              : t("文件夹里没有可转换的文件"),
           );
         } else {
-          toast("err", "这些文件类型暂不支持");
+          toast("err", t("这些文件类型暂不支持"));
         }
         return;
       }
@@ -276,11 +319,12 @@ export default function App() {
       if (first && DOMAIN_VIEWS.includes(first)) setView(first);
 
       if (res.dirs > 0) {
-        const skipped = res.unsupported > 0 ? `，跳过 ${res.unsupported} 个不支持的文件` : "";
-        toast("ok", `已从 ${res.dirs} 个文件夹添加 ${added.length} 个文件${skipped}`);
+        const skipped =
+          res.unsupported > 0 ? t("，跳过 {n} 个不支持的文件", { n: res.unsupported }) : "";
+        toast("ok", t("已从 {dirs} 个文件夹添加 {n} 个文件{suffix}", { dirs: res.dirs, n: added.length, suffix: skipped }));
       }
       if (res.truncated) {
-        toast("info", `文件数量超出上限，本次只导入了前 ${added.length} 个`);
+        toast("info", t("文件数量超出上限，本次只导入了前 {n} 个", { n: added.length }));
       }
     } catch (err) {
       toast("err", String(err));
@@ -289,7 +333,7 @@ export default function App() {
 
   async function pickFiles() {
     try {
-      const picked = await openDialog({ multiple: true, title: "选择要转换的文件" });
+      const picked = await openDialog({ multiple: true, title: t("选择要转换的文件") });
       if (!picked) return;
       await addPaths(Array.isArray(picked) ? picked : [picked]);
     } catch (err) {
@@ -303,7 +347,7 @@ export default function App() {
       const dir = await openDialog({
         directory: true,
         multiple: false,
-        title: "选择要批量转换的文件夹",
+        title: t("选择要批量转换的文件夹"),
       });
       if (typeof dir !== "string") return;
       await addPaths([dir]);
@@ -378,7 +422,7 @@ export default function App() {
       const n = await api.startQueue(domain);
       if (n === 0) {
         setBusy(false);
-        toast("info", "没有待处理的任务");
+        toast("info", t("没有待处理的任务"));
       }
     } catch (err) {
       toast("err", String(err));
@@ -407,7 +451,7 @@ export default function App() {
         : prev,
     );
     setActivePreset((prev) => ({ ...prev, [domain]: p.name }));
-    toast("ok", `已应用预设「${p.name}」`);
+    toast("ok", t("已应用预设「{name}」", { name: p.name }));
   };
 
   const savePreset = async (name: string) => {
@@ -418,7 +462,7 @@ export default function App() {
       await api.savePreset(name, domain, slice);
       setPresets(await api.listPresets());
       setActivePreset((prev) => ({ ...prev, [domain]: name }));
-      toast("ok", `预设「${name}」已保存`);
+      toast("ok", t("预设「{name}」已保存", { name }));
     } catch (e) {
       toast("err", String(e));
     }
@@ -428,7 +472,7 @@ export default function App() {
     try {
       await api.deletePreset(name);
       setPresets(await api.listPresets());
-      toast("info", `预设「${name}」已删除`);
+      toast("info", t("预设「{name}」已删除", { name }));
     } catch (e) {
       toast("err", String(e));
     }
@@ -453,7 +497,7 @@ export default function App() {
     return (
       <div className="boot">
         <div className="boot__spinner" aria-hidden />
-        <p>正在启动 Convy…</p>
+        <p>{t("正在启动 Convy…")}</p>
       </div>
     );
   }
@@ -463,24 +507,24 @@ export default function App() {
   const meta = DOMAIN_META[currentDomain];
 
   const titleMap: Record<ViewId, string> = {
-    video: "视频转换",
-    audio: "音频转换",
-    image: "图片转换",
-    ebook: "电子书转换",
-    document: "文档转换",
-    history: "转换历史",
-    engines: "引擎管理",
-    settings: "全局设置",
+    video: t("视频转换"),
+    audio: t("音频转换"),
+    image: t("图片转换"),
+    ebook: t("电子书转换"),
+    document: t("文档转换"),
+    history: t("转换历史"),
+    engines: t("引擎管理"),
+    settings: t("全局设置"),
   };
   const subtitleMap: Record<ViewId, string> = {
-    video: meta.desc,
-    audio: meta.desc,
-    image: meta.desc,
-    ebook: meta.desc,
-    document: meta.desc,
-    history: "最近的转换记录：可以再转一次、打开产物或查看失败原因",
-    engines: "管理第三方解码与转换引擎：下载、更新、镜像与版本回退",
-    settings: "外观、队列与引擎更新策略",
+    video: t(meta.desc),
+    audio: t(meta.desc),
+    image: t(meta.desc),
+    ebook: t(meta.desc),
+    document: t(meta.desc),
+    history: t("最近的转换记录：可以再转一次、打开产物或查看失败原因"),
+    engines: t("管理第三方解码与转换引擎：下载、更新、镜像与版本回退"),
+    settings: t("外观、队列、更新与语言"),
   };
 
   const engineMissing = (() => {
@@ -490,15 +534,15 @@ export default function App() {
       case "audio":
         return report.ffmpeg && report.ffprobe
           ? undefined
-          : "缺少 FFmpeg 引擎，视频与音频转换不可用";
+          : t("缺少 FFmpeg 引擎，视频与音频转换不可用");
       case "image":
-        return report.image ? undefined : "缺少图片引擎（ImageMagick / libvips）";
+        return report.image ? undefined : t("缺少图片引擎（ImageMagick / libvips）");
       case "ebook":
-        return report.ebook ? undefined : "缺少 Calibre 引擎，电子书转换不可用";
+        return report.ebook ? undefined : t("缺少 Calibre 引擎，电子书转换不可用");
       case "document":
         return report.document || report.pandoc
           ? undefined
-          : "缺少文档引擎（LibreOffice / Pandoc）";
+          : t("缺少文档引擎（LibreOffice / Pandoc）");
     }
   })();
 
@@ -598,6 +642,8 @@ export default function App() {
               onChange={(v) => patchSettings((s) => ({ ...s, global: v }))}
               onToast={toast}
               onShowGuide={() => setOnboarding(true)}
+              update={update}
+              onCheckUpdate={checkUpdate}
             />
           )}
         </div>
@@ -634,7 +680,7 @@ export default function App() {
 
       {dragging && (
         <div className="dropveil">
-          <div className="dropveil__inner">松开以添加文件</div>
+          <div className="dropveil__inner">{t("松开以添加文件")}</div>
         </div>
       )}
     </div>

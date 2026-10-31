@@ -1,4 +1,5 @@
 import { useState, type DragEvent } from "react";
+import { useT } from "../i18n";
 
 /**
  * 紧凑的添加文件入口：单行条（小图标 + 提示文字 + 选择文件 / 选择文件夹按钮）。
@@ -18,6 +19,7 @@ export default function DropZone({
   hint?: string;
   compact?: boolean;
 }) {
+  const t = useT();
   const [over, setOver] = useState(false);
 
   const onDrop = (e: DragEvent) => {
@@ -60,19 +62,19 @@ export default function DropZone({
         </svg>
       </span>
       <span className="dropzone__text">
-        {title ?? "把文件或文件夹拖到这里"}，或拖到窗口任意位置
+        {title ?? t("把文件或文件夹拖到这里")}{t("，或拖到窗口任意位置")}
       </span>
       {onPickFolder && (
         <button
           type="button"
           className="btn btn--ghost dropzone__btn"
-          title="递归导入文件夹里所有受支持的文件"
+          title={t("递归导入文件夹里所有受支持的文件")}
           onClick={(e) => {
             e.stopPropagation();
             onPickFolder();
           }}
         >
-          文件夹
+          {t("文件夹")}
         </button>
       )}
       <button
@@ -83,7 +85,7 @@ export default function DropZone({
           onPick();
         }}
       >
-        选择文件
+        {t("选择文件")}
       </button>
       {hint && <span className="dropzone__hint">{hint}</span>}
     </div>

@@ -11,3 +11,4 @@ pub mod history;
 pub mod queue;
 pub mod settings;
 pub mod system;
+pub mod update;

@@ -1,17 +1,18 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../api";
+import { t, useT } from "../i18n";
 import { DOMAIN_META, STATUS_META, formatSize, type HistoryEntry } from "../types";
 
 /** 相对时间：刚刚 / 5 分钟前 / 3 小时前 / 昨天 / 具体日期 */
 function relTime(ms: number): string {
   if (!ms) return "—";
   const diff = Date.now() - ms;
-  if (diff < 60_000) return "刚刚";
-  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)} 分钟前`;
-  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)} 小时前`;
-  if (diff < 172_800_000) return "昨天";
+  if (diff < 60_000) return t("刚刚");
+  if (diff < 3_600_000) return t("{n} 分钟前", { n: Math.floor(diff / 60_000) });
+  if (diff < 86_400_000) return t("{n} 小时前", { n: Math.floor(diff / 3_600_000) });
+  if (diff < 172_800_000) return t("昨天");
   const d = new Date(ms);
-  return `${d.getMonth() + 1} 月 ${d.getDate()} 日`;
+  return t("{month} 月 {day} 日", { month: d.getMonth() + 1, day: d.getDate() });
 }
 
 function duration(ms: number): string {
@@ -30,6 +31,7 @@ export default function HistoryModule({
   onToast: (kind: "ok" | "err" | "info", text: string) => void;
   onAddPaths: (paths: string[]) => void;
 }) {
+  const t = useT();
   const [entries, setEntries] = useState<HistoryEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<"all" | "done" | "failed">("all");
@@ -68,14 +70,14 @@ export default function HistoryModule({
   /** 再转一次：把源文件重新加回队列（沿用当前模块参数，目标格式随后可改） */
   const again = (e: HistoryEntry) => {
     onAddPaths([e.source]);
-    onToast("info", `已把「${e.fileName}」重新加入队列`);
+    onToast("info", t("已把「{name}」重新加入队列", { name: e.fileName }));
   };
 
   const clearAll = async () => {
     try {
       await api.clearHistory();
       setEntries([]);
-      onToast("info", "历史已清空");
+      onToast("info", t("历史已清空"));
     } catch (err) {
       onToast("err", String(err));
     }
@@ -85,19 +87,19 @@ export default function HistoryModule({
     <div className="historypage">
       <div className="engines__bar">
         <div className="engines__info">
-          <h2 className="engines__title">最近的转换</h2>
+          <h2 className="engines__title">{t("最近的转换")}</h2>
           <p className="engines__desc">
-            共 {entries.length} 条记录，成功 {stats.done} / 失败 {stats.failed}
-            {stats.saved > 0 && `，累计节省 ${formatSize(stats.saved)}`}
+            {t("共 {n} 条记录，成功 {ok} / 失败 {fail}", { n: entries.length, ok: stats.done, fail: stats.failed })}
+            {stats.saved > 0 && t("，累计节省 {size}", { size: formatSize(stats.saved) })}
           </p>
         </div>
         <div className="historypage__tools">
           <div className="segmented segmented--compact">
             {(
               [
-                { v: "all", label: "全部" },
-                { v: "done", label: "成功" },
-                { v: "failed", label: "失败" },
+                { v: "all", label: t("全部") },
+                { v: "done", label: t("成功") },
+                { v: "failed", label: t("失败") },
               ] as const
             ).map((o) => (
               <button
@@ -111,14 +113,14 @@ export default function HistoryModule({
             ))}
           </div>
           <button className="btn btn--ghost" onClick={() => void load()} disabled={loading}>
-            {loading ? "读取中…" : "刷新"}
+            {loading ? t("读取中…") : t("刷新")}
           </button>
           <button
             className="btn btn--ghost"
             onClick={() => void clearAll()}
             disabled={!entries.length}
           >
-            清空历史
+            {t("清空历史")}
           </button>
         </div>
       </div>
@@ -129,8 +131,8 @@ export default function HistoryModule({
             <span className="queue__emptyicon" aria-hidden>
               ⟲
             </span>
-            <p>{loading ? "正在读取历史…" : "还没有转换记录"}</p>
-            <span>完成任意一次转换后，这里会留下记录</span>
+            <p>{loading ? t("正在读取历史…") : t("还没有转换记录")}</p>
+            <span>{t("完成任意一次转换后，这里会留下记录")}</span>
           </div>
         ) : (
           shown.map((e) => {
@@ -151,7 +153,7 @@ export default function HistoryModule({
                     <span>{relTime(e.finishedAt)}</span>
                     <span className="row__dot">·</span>
                     <span>
-                      {domain?.label ?? "文件"} → {e.targetFormat.toUpperCase()}
+                      {domain ? t(domain.label) : t("文件")} → {e.targetFormat.toUpperCase()}
                     </span>
                     <span className="row__dot">·</span>
                     <span>{duration(e.durationMs)}</span>
@@ -183,22 +185,22 @@ export default function HistoryModule({
                   {e.outputPath && e.status === "done" && (
                     <>
                       <button className="linkbtn" onClick={() => api.openPath(e.outputPath!)}>
-                        打开
+                        {t("打开")}
                       </button>
                       <button
                         className="linkbtn"
                         onClick={() => api.revealOutput(e.outputPath!)}
                       >
-                        所在文件夹
+                        {t("所在文件夹")}
                       </button>
                     </>
                   )}
                   <button
                     className="linkbtn"
-                    title="把源文件重新加入队列，使用当前模块参数"
+                    title={t("把源文件重新加入队列，使用当前模块参数")}
                     onClick={() => again(e)}
                   >
-                    再转一次
+                    {t("再转一次")}
                   </button>
                 </div>
               </div>

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useT } from "../i18n";
 import { ACCENTS, THEMES } from "../types";
 
 function ThemePicker({
@@ -12,6 +13,7 @@ function ThemePicker({
   onTheme: (id: string) => void;
   onAccent: (id: string) => void;
 }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -24,7 +26,7 @@ function ThemePicker({
     return () => document.removeEventListener("mousedown", onDown);
   }, [open]);
 
-  const current = THEMES.find((t) => t.id === theme) ?? THEMES[0];
+  const current = THEMES.find((th) => th.id === theme) ?? THEMES[0];
   const currentAccent = ACCENTS.find((a) => a.id === accent) ?? ACCENTS[0];
 
   return (
@@ -33,42 +35,42 @@ function ThemePicker({
         type="button"
         className="themepicker__trigger"
         onClick={() => setOpen(!open)}
-        title="外观"
+        title={t("外观")}
       >
         <span className="themepicker__swatch">
           <i style={{ background: current.swatch[0] }} />
           <i style={{ background: current.swatch[1] }} />
           <i style={{ background: current.swatch[2] }} />
         </span>
-        <span className="themepicker__name">{current.label}</span>
+        <span className="themepicker__name">{t(current.label)}</span>
       </button>
 
       {open && (
         <div className="themepicker__pop">
           <div className="themepicker__section">
-            <div className="themepicker__label">主题</div>
+            <div className="themepicker__label">{t("主题")}</div>
             <div className="themepicker__grid">
-              {THEMES.map((t) => (
+              {THEMES.map((th) => (
                 <button
-                  key={t.id}
+                  key={th.id}
                   type="button"
-                  className={`themeopt${t.id === theme ? " is-active" : ""}`}
-                  onClick={() => onTheme(t.id)}
-                  title={t.label}
+                  className={`themeopt${th.id === theme ? " is-active" : ""}`}
+                  onClick={() => onTheme(th.id)}
+                  title={t(th.label)}
                 >
                   <span className="themeopt__swatch">
-                    <i style={{ background: t.swatch[0] }} />
-                    <i style={{ background: t.swatch[1] }} />
-                    <i style={{ background: t.swatch[2] }} />
+                    <i style={{ background: th.swatch[0] }} />
+                    <i style={{ background: th.swatch[1] }} />
+                    <i style={{ background: th.swatch[2] }} />
                   </span>
-                  <span className="themeopt__label">{t.label}</span>
+                  <span className="themeopt__label">{t(th.label)}</span>
                 </button>
               ))}
             </div>
           </div>
 
           <div className="themepicker__section">
-            <div className="themepicker__label">强调色</div>
+            <div className="themepicker__label">{t("强调色")}</div>
             <div className="themepicker__accents">
               {ACCENTS.map((a) => (
                 <button
@@ -76,12 +78,12 @@ function ThemePicker({
                   type="button"
                   className={`accentdot${a.id === accent ? " is-active" : ""}`}
                   style={{ background: a.color }}
-                  title={a.label}
+                  title={t(a.label)}
                   onClick={() => onAccent(a.id)}
                 />
               ))}
             </div>
-            <div className="themepicker__accname">{currentAccent.label}</div>
+            <div className="themepicker__accname">{t(currentAccent.label)}</div>
           </div>
         </div>
       )}

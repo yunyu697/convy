@@ -1,4 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
+import { t } from "../i18n";
 import { api } from "../api";
 
 /**
@@ -31,8 +32,8 @@ export class ErrorBoundary extends Component<Props, State> {
   componentDidCatch(error: Error, info: ErrorInfo) {
     const detail = [
       error.message,
-      error.stack ?? "(无堆栈)",
-      info.componentStack ?? "(无组件栈)",
+      error.stack ?? t("(无堆栈)"),
+      info.componentStack ?? t("(无组件栈)"),
     ].join("\n");
     // 写日志失败不能再抛，否则会掉进「错误边界自己出错」的死循环
     void api.logFrontendError(detail).catch(() => {});
@@ -61,25 +62,24 @@ export class ErrorBoundary extends Component<Props, State> {
           <div className="crash__badge" aria-hidden>
             !
           </div>
-          <h1 className="crash__title">界面遇到了问题</h1>
+          <h1 className="crash__title">{t("界面遇到了问题")}</h1>
           <p className="crash__lead">
-            转换任务保存在后台，<strong>重新加载不会丢失队列</strong>。
-            如果反复出现，点「打开日志」把文件发给开发者。
+            {t("转换任务保存在后台，")}<strong>{t("重新加载不会丢失队列")}</strong>{t("。如果反复出现，点「打开日志」把文件发给开发者。")}
           </p>
 
           <pre className="crash__detail">{detail}</pre>
 
           <div className="crash__actions">
             <button className="btn btn--primary" onClick={this.reload}>
-              重新加载界面
+              {t("重新加载界面")}
             </button>
             <button className="btn btn--ghost" onClick={this.openLog}>
-              打开日志
+              {t("打开日志")}
             </button>
           </div>
 
           <p className="crash__hint">
-            日志位置：系统临时目录下的 <code>convy.log</code>
+            {t("日志位置：系统临时目录下的")} <code>convy.log</code>
           </p>
         </div>
       </div>

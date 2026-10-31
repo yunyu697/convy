@@ -1,4 +1,5 @@
 import { Field, Group, NumberInput, Segmented, Select, Slider, TextInput, Toggle } from "../components/ui";
+import { t } from "../i18n";
 import {
   DOMAIN_TARGETS,
   QUALITY_LABEL,
@@ -14,6 +15,11 @@ import {
 } from "../types";
 
 // ---------------------------------------------------------------- 公共选项
+
+/** 选项数组是模块级常量，label 保持中文原文，渲染时再翻译 */
+const tr = <T extends string>(opts: { value: T; label: string }[]) =>
+  opts.map((o) => ({ ...o, label: t(o.label) }));
+
 
 const ROTATIONS: { value: string; label: string }[] = [
   { value: "none", label: "不旋转" },
@@ -80,7 +86,7 @@ function QuickBar({ children }: { children: React.ReactNode }) {
   return (
     <div className="quickbar">
       <span className="quickbar__title" aria-hidden>
-        ⚡ 快速调整
+        ⚡ {t("快速调整")}
       </span>
       {children}
     </div>
@@ -107,12 +113,12 @@ function TargetField({
   onChange: (v: string) => void;
 }) {
   return (
-    <Field label="目标格式" hint="新添加任务的默认输出格式">
+    <Field label={t("目标格式")} hint={t("新添加任务的默认输出格式")}>
       <Select
         value={value}
         onChange={onChange}
         options={[
-          { value: "", label: "自动（跟随格式推荐）" },
+          { value: "", label: t("自动（跟随格式推荐）") },
           ...DOMAIN_TARGETS[domain].map((t) => ({ value: t, label: t.toUpperCase() })),
         ]}
       />
@@ -129,13 +135,13 @@ function VolumeField({
   onChange: (v: number) => void;
 }) {
   return (
-    <Field label="音量增益" hint="与响度归一互斥，归一优先">
+    <Field label={t("音量增益")} hint={t("与响度归一互斥，归一优先")}>
       <Slider
         value={value}
         onChange={onChange}
         min={-30}
         max={12}
-        format={(v) => (v === 0 ? "不调整" : `${v > 0 ? "+" : ""}${v} dB`)}
+        format={(v) => (v === 0 ? t("不调整") : `${v > 0 ? "+" : ""}${v} dB`)}
       />
     </Field>
   );
@@ -200,24 +206,24 @@ export function VideoPanel({
   return (
     <>
       <QuickBar>
-        <QuickItem label="其余参数">
+        <QuickItem label={t("其余参数")}>
           <Segmented
             compact
             value={value.keepSource ? "source" : "custom"}
             onChange={(v) => set("keepSource", v === "source")}
             options={[
-              { value: "source", label: "跟随源文件" },
-              { value: "custom", label: "自定义" },
+              { value: "source", label: t("跟随源文件") },
+              { value: "custom", label: t("自定义") },
             ]}
           />
         </QuickItem>
-        <QuickItem label="视频编码">
+        <QuickItem label={t("视频编码")}>
           <Segmented
             compact
             value={value.videoCodec}
             onChange={(v) => set("videoCodec", v)}
             options={[
-              { value: "auto", label: "自动" },
+              { value: "auto", label: t("自动") },
               { value: "h264", label: "H.264" },
               { value: "hevc", label: "H.265" },
               { value: "vp9", label: "VP9" },
@@ -225,17 +231,17 @@ export function VideoPanel({
             ]}
           />
         </QuickItem>
-        <QuickItem label="音轨">
+        <QuickItem label={t("音轨")}>
           <Segmented
             compact
             value={value.audioCodec}
             onChange={(v) => set("audioCodec", v)}
             options={[
-              { value: "auto", label: "自动" },
+              { value: "auto", label: t("自动") },
               { value: "aac", label: "AAC" },
               { value: "mp3", label: "MP3" },
-              { value: "copy", label: "复制" },
-              { value: "none", label: "无声" },
+              { value: "copy", label: t("复制") },
+              { value: "none", label: t("无声") },
             ]}
           />
         </QuickItem>
@@ -243,35 +249,35 @@ export function VideoPanel({
 
       {value.keepSource && (
         <p className="quickbar__hint">
-          分辨率、帧率、码率、采样率、声道均与源文件一致，只应用你选择的编码与格式。
+          {t("分辨率、帧率、码率、采样率、声道均与源文件一致，只应用你选择的编码与格式。")}
         </p>
       )}
 
-      <Group title="基础" desc="画质、分辨率与目标格式">
-        <Field label="质量档位" locked={value.keepSource}>
+      <Group title={t("基础")} desc={t("画质、分辨率与目标格式")}>
+        <Field label={t("质量档位")} locked={value.keepSource}>
           <Segmented<Quality>
             value={value.quality}
             onChange={(q) => set("quality", q)}
             options={[
-              { value: "high", label: QUALITY_LABEL.high },
-              { value: "balanced", label: QUALITY_LABEL.balanced },
-              { value: "small", label: QUALITY_LABEL.small },
+              { value: "high", label: t(QUALITY_LABEL.high) },
+              { value: "balanced", label: t(QUALITY_LABEL.balanced) },
+              { value: "small", label: t(QUALITY_LABEL.small) },
             ]}
           />
         </Field>
 
         <TargetField domain="video" value={value.defaultTarget} onChange={(v) => set("defaultTarget", v)} />
 
-        <Field label="分辨率" hint="长边优先，保持画面比例" locked={value.keepSource}>
+        <Field label={t("分辨率")} hint={t("长边优先，保持画面比例")} locked={value.keepSource}>
           <Select
             value={value.resolution}
             onChange={(v) => set("resolution", v)}
-            options={RESOLUTIONS}
+            options={tr(RESOLUTIONS)}
           />
         </Field>
 
         {value.resolution === "custom" && (
-          <Field label="自定义尺寸" wide locked={value.keepSource}>
+          <Field label={t("自定义尺寸")} wide locked={value.keepSource}>
             <div className="field__row">
               <NumberInput
                 value={value.customWidth}
@@ -294,29 +300,29 @@ export function VideoPanel({
           </Field>
         )}
 
-        <Field label="视频编码器" hint="决定 H.264 / H.265 / VP9 / AV1">
+        <Field label={t("视频编码器")} hint={t("决定 H.264 / H.265 / VP9 / AV1")}>
           <Select
             value={value.videoCodec}
             onChange={(v) => set("videoCodec", v)}
-            options={VIDEO_CODECS}
+            options={tr(VIDEO_CODECS)}
           />
         </Field>
       </Group>
 
-      <Group title="码率与速度" desc="CRF / CBR、编码速度与帧率">
-        <Field label="码率模式" locked={value.keepSource}>
+      <Group title={t("码率与速度")} desc={t("CRF / CBR、编码速度与帧率")}>
+        <Field label={t("码率模式")} locked={value.keepSource}>
           <Segmented
             value={cbr ? "cbr" : "crf"}
             onChange={(m) => set("videoBitrate", m === "cbr" ? 6000 : 0)}
             options={[
-              { value: "crf", label: "CRF 恒定画质" },
-              { value: "cbr", label: "CBR 固定码率" },
+              { value: "crf", label: t("CRF 恒定画质") },
+              { value: "cbr", label: t("CBR 固定码率") },
             ]}
           />
         </Field>
 
         {cbr ? (
-          <Field label="视频码率" hint="单位 kbps" locked={value.keepSource}>
+          <Field label={t("视频码率")} hint={t("单位 kbps")} locked={value.keepSource}>
             <NumberInput
               value={value.videoBitrate}
               onChange={(v) => set("videoBitrate", v)}
@@ -327,7 +333,7 @@ export function VideoPanel({
             />
           </Field>
         ) : (
-          <Field label="CRF" hint="数值越小画质越好、文件越大" locked={value.keepSource}>
+          <Field label="CRF" hint={t("数值越小画质越好、文件越大")} locked={value.keepSource}>
             <Slider
               value={value.crf}
               onChange={(v) => set("crf", v)}
@@ -338,126 +344,126 @@ export function VideoPanel({
           </Field>
         )}
 
-        <Field label="编码速度" hint="只对软件编码器（x264/x265）生效，越慢压缩率越高">
-          <Select value={value.speed} onChange={(v) => set("speed", v)} options={SPEEDS} />
+        <Field label={t("编码速度")} hint={t("只对软件编码器（x264/x265）生效，越慢压缩率越高")}>
+          <Select value={value.speed} onChange={(v) => set("speed", v)} options={tr(SPEEDS)} />
         </Field>
 
-        <Field label="帧率" locked={value.keepSource}>
+        <Field label={t("帧率")} locked={value.keepSource}>
           {knownFps ? (
             <Select
               value={value.fps}
               onChange={(v) => set("fps", v === "__custom" ? "" : v)}
-              options={[...KNOWN_FPS, { value: "__custom", label: "自定义…" }]}
+              options={[...KNOWN_FPS, { value: "__custom", label: t("自定义…") }]}
             />
           ) : (
             <div className="field__row">
               <TextInput
                 value={value.fps}
                 onChange={(v) => set("fps", v)}
-                placeholder="如 23.976"
+                placeholder={t("如 23.976")}
               />
               <button className="btn btn--ghost" onClick={() => set("fps", "source")}>
-                恢复
+                {t("恢复")}
               </button>
             </div>
           )}
         </Field>
       </Group>
 
-      <Group title="画面处理" desc="旋转、翻转与去隔行">
-        <Field label="旋转" hint="顺时针角度">
-          <Select value={value.rotation} onChange={(v) => set("rotation", v)} options={ROTATIONS} />
+      <Group title={t("画面处理")} desc={t("旋转、翻转与去隔行")}>
+        <Field label={t("旋转")} hint={t("顺时针角度")}>
+          <Select value={value.rotation} onChange={(v) => set("rotation", v)} options={tr(ROTATIONS)} />
         </Field>
 
-        <Field label="镜像翻转">
+        <Field label={t("镜像翻转")}>
           <div className="field__row">
-            <Toggle checked={value.flipH} onChange={(v) => set("flipH", v)} label="水平" />
-            <Toggle checked={value.flipV} onChange={(v) => set("flipV", v)} label="垂直" />
+            <Toggle checked={value.flipH} onChange={(v) => set("flipH", v)} label={t("水平")} />
+            <Toggle checked={value.flipV} onChange={(v) => set("flipV", v)} label={t("垂直")} />
           </div>
         </Field>
 
-        <Field label="去隔行" hint="把隔行扫描转为逐行（老式片源）">
+        <Field label={t("去隔行")} hint={t("把隔行扫描转为逐行（老式片源）")}>
           <Toggle
             checked={value.deinterlace}
             onChange={(v) => set("deinterlace", v)}
-            label={value.deinterlace ? "已启用" : "已关闭"}
+            label={value.deinterlace ? t("已启用") : t("已关闭")}
           />
         </Field>
       </Group>
 
-      <Group title="硬件加速" desc="优先使用显卡编码，失败自动回退软件">
-        <Field label="加速模式">
+      <Group title={t("硬件加速")} desc={t("优先使用显卡编码，失败自动回退软件")}>
+        <Field label={t("加速模式")}>
           <Segmented<HwMode>
             value={value.hardware}
             onChange={(v) => set("hardware", v)}
             options={[
-              { value: "auto", label: "自动" },
-              { value: "force", label: "强制指定" },
-              { value: "off", label: "关闭" },
+              { value: "auto", label: t("自动") },
+              { value: "force", label: t("强制指定") },
+              { value: "off", label: t("关闭") },
             ]}
           />
         </Field>
 
         {value.hardware === "force" && (
-          <Field label="指定编码器">
+          <Field label={t("指定编码器")}>
             <Select
               value={value.encoder}
               onChange={(v) => set("encoder", v)}
-              options={[{ value: "auto", label: "自动选择" }, ...HW_ENCODERS]}
+              options={[{ value: "auto", label: t("自动选择") }, ...HW_ENCODERS]}
             />
           </Field>
         )}
       </Group>
 
-      <Group title="音轨" desc="视频文件内音频流的处理">
-        <Field label="音频编码器">
+      <Group title={t("音轨")} desc={t("视频文件内音频流的处理")}>
+        <Field label={t("音频编码器")}>
           <Select
             value={value.audioCodec}
             onChange={(v) => set("audioCodec", v)}
-            options={AUDIO_CODECS}
+            options={tr(AUDIO_CODECS)}
           />
         </Field>
-        <Field label="音频码率" hint="保持原码率 = 由编码器按源流就近输出" locked={value.keepSource}>
+        <Field label={t("音频码率")} hint={t("保持原码率 = 由编码器按源流就近输出")} locked={value.keepSource}>
           <Select
             value={String(value.audioBitrate)}
             onChange={(v) => set("audioBitrate", Number(v))}
-            options={AUDIO_BITRATES}
+            options={tr(AUDIO_BITRATES)}
           />
         </Field>
-        <Field label="采样率" locked={value.keepSource}>
+        <Field label={t("采样率")} locked={value.keepSource}>
           <Select
             value={String(value.audioSampleRate)}
             onChange={(v) => set("audioSampleRate", Number(v))}
-            options={SAMPLE_RATES}
+            options={tr(SAMPLE_RATES)}
           />
         </Field>
-        <Field label="声道数" locked={value.keepSource}>
+        <Field label={t("声道数")} locked={value.keepSource}>
           <Segmented
             value={String(value.audioChannels)}
             onChange={(v) => set("audioChannels", Number(v))}
             options={[
-              { value: "0", label: "保持" },
-              { value: "1", label: "单声道" },
-              { value: "2", label: "立体声" },
+              { value: "0", label: t("保持") },
+              { value: "1", label: t("单声道") },
+              { value: "2", label: t("立体声") },
             ]}
           />
         </Field>
-        <Field label="响度归一" hint="统一到广播标准响度，与增益互斥">
+        <Field label={t("响度归一")} hint={t("统一到广播标准响度，与增益互斥")}>
           <Toggle
             checked={value.audioNormalize}
             onChange={(v) => set("audioNormalize", v)}
-            label={value.audioNormalize ? "已启用" : "已关闭"}
+            label={value.audioNormalize ? t("已启用") : t("已关闭")}
           />
         </Field>
         <VolumeField value={value.volumeDb} onChange={(v) => set("volumeDb", v)} />
       </Group>
 
-      <Group title="封装" defaultOpen={false}>
-        <Field label="快速起播" hint="把 moov 原子前置，网页播放更快">
+      <Group title={t("封装")} defaultOpen={false}>
+        <Field label={t("快速起播")} hint={t("把 moov 原子前置，网页播放更快")}>
           <Toggle
             checked={value.faststart}
             onChange={(v) => set("faststart", v)}
-            label={value.faststart ? "已启用" : "已关闭"}
+            label={value.faststart ? t("已启用") : t("已关闭")}
           />
         </Field>
       </Group>
@@ -492,24 +498,24 @@ export function AudioPanel({
   return (
     <>
       <QuickBar>
-        <QuickItem label="其余参数">
+        <QuickItem label={t("其余参数")}>
           <Segmented
             compact
             value={value.keepSource ? "source" : "custom"}
             onChange={(v) => set("keepSource", v === "source")}
             options={[
-              { value: "source", label: "跟随源文件" },
-              { value: "custom", label: "自定义" },
+              { value: "source", label: t("跟随源文件") },
+              { value: "custom", label: t("自定义") },
             ]}
           />
         </QuickItem>
-        <QuickItem label="编码">
+        <QuickItem label={t("编码")}>
           <Segmented
             compact
             value={value.codec}
             onChange={(v) => set("codec", v)}
             options={[
-              { value: "auto", label: "自动" },
+              { value: "auto", label: t("自动") },
               { value: "mp3", label: "MP3" },
               { value: "aac", label: "AAC" },
               { value: "flac", label: "FLAC" },
@@ -518,13 +524,13 @@ export function AudioPanel({
             ]}
           />
         </QuickItem>
-        <QuickItem label="码率">
+        <QuickItem label={t("码率")}>
           <Segmented
             compact
             value={String(value.bitrate)}
             onChange={(v) => set("bitrate", Number(v))}
             options={[
-              { value: "0", label: "原码率" },
+              { value: "0", label: t("原码率") },
               { value: "128", label: "128k" },
               { value: "192", label: "192k" },
               { value: "320", label: "320k" },
@@ -535,70 +541,70 @@ export function AudioPanel({
 
       {value.keepSource && (
         <p className="quickbar__hint">
-          码率、采样率、声道均与源文件一致，只应用你选择的编码与格式。
+          {t("码率、采样率、声道均与源文件一致，只应用你选择的编码与格式。")}
         </p>
       )}
 
-      <Group title="编码" desc="输出格式与码率">
-        <Field label="质量档位" locked={value.keepSource}>
+      <Group title={t("编码")} desc={t("输出格式与码率")}>
+        <Field label={t("质量档位")} locked={value.keepSource}>
           <Segmented<Quality>
             value={value.quality}
             onChange={(q) => set("quality", q)}
             options={[
-              { value: "high", label: QUALITY_LABEL.high },
-              { value: "balanced", label: QUALITY_LABEL.balanced },
-              { value: "small", label: QUALITY_LABEL.small },
+              { value: "high", label: t(QUALITY_LABEL.high) },
+              { value: "balanced", label: t(QUALITY_LABEL.balanced) },
+              { value: "small", label: t(QUALITY_LABEL.small) },
             ]}
           />
         </Field>
 
         <TargetField domain="audio" value={value.defaultTarget} onChange={(v) => set("defaultTarget", v)} />
 
-        <Field label="音频编码器">
+        <Field label={t("音频编码器")}>
           <Select
             value={value.codec}
             onChange={(v) => set("codec", v)}
-            options={AUDIO_CODEC_OPTS}
+            options={tr(AUDIO_CODEC_OPTS)}
           />
         </Field>
 
-        <Field label="码率" hint="保持原码率 = 由编码器按源流就近输出；无损/复制时忽略" locked={value.keepSource}>
+        <Field label={t("码率")} hint={t("保持原码率 = 由编码器按源流就近输出；无损/复制时忽略")} locked={value.keepSource}>
           <Select
             value={String(value.bitrate)}
             onChange={(v) => set("bitrate", Number(v))}
-            options={AUDIO_BITRATES}
+            options={tr(AUDIO_BITRATES)}
           />
         </Field>
       </Group>
 
-      <Group title="采样与声道">
-        <Field label="采样率" locked={value.keepSource}>
+      <Group title={t("采样与声道")}>
+        <Field label={t("采样率")} locked={value.keepSource}>
           <Select
             value={String(value.sampleRate)}
             onChange={(v) => set("sampleRate", Number(v))}
-            options={SAMPLE_RATES}
+            options={tr(SAMPLE_RATES)}
           />
         </Field>
 
-        <Field label="声道数" locked={value.keepSource}>
+        <Field label={t("声道数")} locked={value.keepSource}>
           <Segmented
             value={String(value.channels)}
             onChange={(v) => set("channels", Number(v))}
             options={[
-              { value: "0", label: "保持" },
-              { value: "1", label: "单声道" },
-              { value: "2", label: "立体声" },
+              { value: "0", label: t("保持") },
+              { value: "1", label: t("单声道") },
+              { value: "2", label: t("立体声") },
             ]}
           />
         </Field>
       </Group>
 
-      <Group title="音量" desc="归一化或手动增益">
-        <Field label="响度归一" hint="统一各文件音量到广播标准响度">
+      <Group title={t("音量")} desc={t("归一化或手动增益")}>
+        <Field label={t("响度归一")} hint={t("统一各文件音量到广播标准响度")}>
           <Toggle
             checked={value.normalize}
             onChange={(v) => set("normalize", v)}
-            label={value.normalize ? "已启用" : "已关闭"}
+            label={value.normalize ? t("已启用") : t("已关闭")}
           />
         </Field>
         <VolumeField value={value.volumeDb} onChange={(v) => set("volumeDb", v)} />
@@ -622,13 +628,13 @@ export function ImagePanel({
   return (
     <>
       <QuickBar>
-        <QuickItem label="输出格式">
+        <QuickItem label={t("输出格式")}>
           <Segmented
             compact
             value={value.defaultTarget}
             onChange={(v) => set("defaultTarget", v)}
             options={[
-              { value: "", label: "自动" },
+              { value: "", label: t("自动") },
               { value: "jpg", label: "JPG" },
               { value: "png", label: "PNG" },
               { value: "webp", label: "WebP" },
@@ -637,29 +643,29 @@ export function ImagePanel({
             ]}
           />
         </QuickItem>
-        <QuickItem label="质量">
+        <QuickItem label={t("质量")}>
           <Segmented<Quality>
             compact
             value={value.quality}
             onChange={(q) => set("quality", q)}
             options={[
-              { value: "high", label: "高" },
-              { value: "balanced", label: "均衡" },
-              { value: "small", label: "小" },
+              { value: "high", label: t("高") },
+              { value: "balanced", label: t("均衡") },
+              { value: "small", label: t("小") },
             ]}
           />
         </QuickItem>
       </QuickBar>
 
-      <Group title="基础" desc="输出格式与质量档位">
-        <Field label="质量档位">
+      <Group title={t("基础")} desc={t("输出格式与质量档位")}>
+        <Field label={t("质量档位")}>
           <Segmented<Quality>
             value={value.quality}
             onChange={(q) => set("quality", q)}
             options={[
-              { value: "high", label: QUALITY_LABEL.high },
-              { value: "balanced", label: QUALITY_LABEL.balanced },
-              { value: "small", label: QUALITY_LABEL.small },
+              { value: "high", label: t(QUALITY_LABEL.high) },
+              { value: "balanced", label: t(QUALITY_LABEL.balanced) },
+              { value: "small", label: t(QUALITY_LABEL.small) },
             ]}
           />
         </Field>
@@ -667,8 +673,8 @@ export function ImagePanel({
         <TargetField domain="image" value={value.defaultTarget} onChange={(v) => set("defaultTarget", v)} />
       </Group>
 
-      <Group title="尺寸" desc="留 0 表示保持原始尺寸">
-        <Field label="宽度 / 高度" wide>
+      <Group title={t("尺寸")} desc={t("留 0 表示保持原始尺寸")}>
+        <Field label={t("宽度 / 高度")} wide>
           <div className="field__row">
             <NumberInput
               value={value.width}
@@ -690,30 +696,30 @@ export function ImagePanel({
           </div>
         </Field>
 
-        <Field label="保持宽高比" hint="缩放时避免画面变形">
+        <Field label={t("保持宽高比")} hint={t("缩放时避免画面变形")}>
           <Toggle
             checked={value.keepAspect}
             onChange={(v) => set("keepAspect", v)}
-            label={value.keepAspect ? "已启用" : "已关闭"}
+            label={value.keepAspect ? t("已启用") : t("已关闭")}
           />
         </Field>
       </Group>
 
-      <Group title="画面调整" desc="旋转与镜像">
-        <Field label="旋转" hint="顺时针角度">
-          <Select value={value.rotation} onChange={(v) => set("rotation", v)} options={ROTATIONS} />
+      <Group title={t("画面调整")} desc={t("旋转与镜像")}>
+        <Field label={t("旋转")} hint={t("顺时针角度")}>
+          <Select value={value.rotation} onChange={(v) => set("rotation", v)} options={tr(ROTATIONS)} />
         </Field>
 
-        <Field label="镜像翻转">
+        <Field label={t("镜像翻转")}>
           <div className="field__row">
-            <Toggle checked={value.flipH} onChange={(v) => set("flipH", v)} label="水平" />
-            <Toggle checked={value.flipV} onChange={(v) => set("flipV", v)} label="垂直" />
+            <Toggle checked={value.flipH} onChange={(v) => set("flipH", v)} label={t("水平")} />
+            <Toggle checked={value.flipV} onChange={(v) => set("flipV", v)} label={t("垂直")} />
           </div>
         </Field>
       </Group>
 
-      <Group title="压缩质量" desc="按目标格式分别设置">
-        <Field label="JPEG 质量" hint="1–100，越高越清晰">
+      <Group title={t("压缩质量")} desc={t("按目标格式分别设置")}>
+        <Field label={t("JPEG 质量")} hint={t("1–100，越高越清晰")}>
           <Slider
             value={value.jpgQuality}
             onChange={(v) => set("jpgQuality", v)}
@@ -722,7 +728,7 @@ export function ImagePanel({
             format={(v) => `${v}`}
           />
         </Field>
-        <Field label="PNG 压缩级别" hint="0 最快 · 9 体积最小">
+        <Field label={t("PNG 压缩级别")} hint={t("0 最快 · 9 体积最小")}>
           <Slider
             value={value.pngLevel}
             onChange={(v) => set("pngLevel", v)}
@@ -731,7 +737,7 @@ export function ImagePanel({
             format={(v) => `${v}`}
           />
         </Field>
-        <Field label="WebP 质量">
+        <Field label={t("WebP 质量")}>
           <Slider
             value={value.webpQuality}
             onChange={(v) => set("webpQuality", v)}
@@ -740,7 +746,7 @@ export function ImagePanel({
             format={(v) => `${v}`}
           />
         </Field>
-        <Field label="AVIF 质量" hint="压缩率极高，编码较慢">
+        <Field label={t("AVIF 质量")} hint={t("压缩率极高，编码较慢")}>
           <Slider
             value={value.avifQuality}
             onChange={(v) => set("avifQuality", v)}
@@ -751,15 +757,15 @@ export function ImagePanel({
         </Field>
       </Group>
 
-      <Group title="元数据与透明" desc="EXIF 与透明通道处理">
-        <Field label="清除 EXIF" hint="移除拍摄信息、GPS 等隐私数据">
+      <Group title={t("元数据与透明")} desc={t("EXIF 与透明通道处理")}>
+        <Field label={t("清除 EXIF")} hint={t("移除拍摄信息、GPS 等隐私数据")}>
           <Toggle
             checked={value.strip}
             onChange={(v) => set("strip", v)}
-            label={value.strip ? "已启用" : "已关闭"}
+            label={value.strip ? t("已启用") : t("已关闭")}
           />
         </Field>
-        <Field label="背景色" hint="输出 JPG 时拍平透明通道用，如 #ffffff">
+        <Field label={t("背景色")} hint={t("输出 JPG 时拍平透明通道用，如 #ffffff")}>
           <TextInput
             value={value.background}
             onChange={(v) => set("background", v)}
@@ -794,56 +800,56 @@ export function EbookPanel({
   return (
     <>
       <QuickBar>
-        <QuickItem label="设备">
+        <QuickItem label={t("设备")}>
           <Segmented
             compact
             value={value.profile}
             onChange={(v) => set("profile", v)}
             options={[
-              { value: "generic", label: "通用" },
+              { value: "generic", label: t("通用") },
               { value: "kindle", label: "Kindle" },
-              { value: "tablet", label: "平板" },
-              { value: "phone", label: "手机" },
+              { value: "tablet", label: t("平板") },
+              { value: "phone", label: t("手机") },
             ]}
           />
         </QuickItem>
-        <QuickItem label="目录">
+        <QuickItem label={t("目录")}>
           <Segmented
             compact
             value={value.insertToc ? "on" : "off"}
             onChange={(v) => set("insertToc", v === "on")}
             options={[
-              { value: "on", label: "生成" },
-              { value: "off", label: "不生成" },
+              { value: "on", label: t("生成") },
+              { value: "off", label: t("不生成") },
             ]}
           />
         </QuickItem>
       </QuickBar>
 
-      <Group title="排版" desc="字体、间距与设备适配">
-        <Field label="质量档位">
+      <Group title={t("排版")} desc={t("字体、间距与设备适配")}>
+        <Field label={t("质量档位")}>
           <Segmented<Quality>
             value={value.quality}
             onChange={(q) => set("quality", q)}
             options={[
-              { value: "high", label: QUALITY_LABEL.high },
-              { value: "balanced", label: QUALITY_LABEL.balanced },
-              { value: "small", label: QUALITY_LABEL.small },
+              { value: "high", label: t(QUALITY_LABEL.high) },
+              { value: "balanced", label: t(QUALITY_LABEL.balanced) },
+              { value: "small", label: t(QUALITY_LABEL.small) },
             ]}
           />
         </Field>
 
         <TargetField domain="ebook" value={value.defaultTarget} onChange={(v) => set("defaultTarget", v)} />
 
-        <Field label="设备画像" hint="决定屏幕尺寸与翻页方式">
+        <Field label={t("设备画像")} hint={t("决定屏幕尺寸与翻页方式")}>
           <Select
             value={value.profile}
             onChange={(v) => set("profile", v)}
-            options={EBOOK_PROFILES}
+            options={tr(EBOOK_PROFILES)}
           />
         </Field>
 
-        <Field label="基础字号" hint="单位 pt">
+        <Field label={t("基础字号")} hint={t("单位 pt")}>
           <NumberInput
             value={value.baseFontSize}
             onChange={(v) => set("baseFontSize", v)}
@@ -853,7 +859,7 @@ export function EbookPanel({
           />
         </Field>
 
-        <Field label="行距倍数">
+        <Field label={t("行距倍数")}>
           <Slider
             value={value.lineHeight}
             onChange={(v) => set("lineHeight", v)}
@@ -864,7 +870,7 @@ export function EbookPanel({
           />
         </Field>
 
-        <Field label="页边距" hint="单位 pt">
+        <Field label={t("页边距")} hint={t("单位 pt")}>
           <NumberInput
             value={value.margin}
             onChange={(v) => set("margin", v)}
@@ -874,34 +880,34 @@ export function EbookPanel({
           />
         </Field>
 
-        <Field label="嵌入字体" hint="正文字体族名，空 = 设备默认">
+        <Field label={t("嵌入字体")} hint={t("正文字体族名，空 = 设备默认")}>
           <TextInput
             value={value.fontFamily}
             onChange={(v) => set("fontFamily", v)}
-            placeholder="如 思源宋体"
+            placeholder={t("如 思源宋体")}
           />
         </Field>
 
-        <Field label="两端对齐" hint="关闭后正文左对齐">
+        <Field label={t("两端对齐")} hint={t("关闭后正文左对齐")}>
           <Toggle
             checked={value.justify}
             onChange={(v) => set("justify", v)}
-            label={value.justify ? "已启用" : "左对齐"}
+            label={value.justify ? t("已启用") : t("左对齐")}
           />
         </Field>
       </Group>
 
-      <Group title="元数据" desc="留空保留源文件的书名与作者">
-        <Field label="书名">
-          <TextInput value={value.title} onChange={(v) => set("title", v)} placeholder="保留源数据" />
+      <Group title={t("元数据")} desc={t("留空保留源文件的书名与作者")}>
+        <Field label={t("书名")}>
+          <TextInput value={value.title} onChange={(v) => set("title", v)} placeholder={t("保留源数据")} />
         </Field>
-        <Field label="作者">
-          <TextInput value={value.author} onChange={(v) => set("author", v)} placeholder="保留源数据" />
+        <Field label={t("作者")}>
+          <TextInput value={value.author} onChange={(v) => set("author", v)} placeholder={t("保留源数据")} />
         </Field>
       </Group>
 
-      <Group title="图片与结构">
-        <Field label="内嵌图片质量" hint="1–100">
+      <Group title={t("图片与结构")}>
+        <Field label={t("内嵌图片质量")} hint="1–100">
           <Slider
             value={value.jpegQuality}
             onChange={(v) => set("jpegQuality", v)}
@@ -911,11 +917,11 @@ export function EbookPanel({
           />
         </Field>
 
-        <Field label="插入目录" hint="按章节标题生成可跳转目录">
+        <Field label={t("插入目录")} hint={t("按章节标题生成可跳转目录")}>
           <Toggle
             checked={value.insertToc}
             onChange={(v) => set("insertToc", v)}
-            label={value.insertToc ? "已启用" : "已关闭"}
+            label={value.insertToc ? t("已启用") : t("已关闭")}
           />
         </Field>
       </Group>
@@ -951,13 +957,13 @@ export function DocumentPanel({
   return (
     <>
       <QuickBar>
-        <QuickItem label="输出">
+        <QuickItem label={t("输出")}>
           <Segmented
             compact
             value={value.defaultTarget}
             onChange={(v) => set("defaultTarget", v)}
             options={[
-              { value: "", label: "自动" },
+              { value: "", label: t("自动") },
               { value: "pdf", label: "PDF" },
               { value: "docx", label: "Word" },
               { value: "txt", label: "TXT" },
@@ -965,13 +971,13 @@ export function DocumentPanel({
             ]}
           />
         </QuickItem>
-        <QuickItem label="通道">
+        <QuickItem label={t("通道")}>
           <Segmented
             compact
             value={value.via}
             onChange={(v) => set("via", v)}
             options={[
-              { value: "auto", label: "自动" },
+              { value: "auto", label: t("自动") },
               { value: "pandoc", label: "Pandoc" },
               { value: "soffice", label: "LibreOffice" },
             ]}
@@ -979,40 +985,41 @@ export function DocumentPanel({
         </QuickItem>
       </QuickBar>
 
-      <Group title="转换通道" desc="不同引擎对同一格式的表现差异">
+      <Group title={t("转换通道")} desc={t("不同引擎对同一格式的表现差异")}>
         <TargetField domain="document" value={value.defaultTarget} onChange={(v) => set("defaultTarget", v)} />
 
-        <Field label="转换方式">
-          <Select value={value.via} onChange={(v) => set("via", v)} options={DOC_VIA} />
+        <Field label={t("转换方式")}>
+          <Select value={value.via} onChange={(v) => set("via", v)} options={tr(DOC_VIA)} />
         </Field>
-        <Field label="PDF 排版引擎" hint="导出 PDF 时使用">
+        <Field label={t("PDF 排版引擎")} hint={t("导出 PDF 时使用")}>
           <Select
             value={value.pdfEngine}
             onChange={(v) => set("pdfEngine", v)}
-            options={PDF_ENGINES}
+            options={tr(PDF_ENGINES)}
           />
         </Field>
       </Group>
 
-      <Group title="结构" desc="目录生成">
-        <Field label="自动生成目录" hint="Pandoc 输出 docx / pdf / epub 时在开头插入目录">
+      <Group title={t("结构")} desc={t("目录生成")}>
+        <Field label={t("自动生成目录")} hint={t("Pandoc 输出 docx / pdf / epub 时在开头插入目录")}>
           <Toggle
             checked={value.toc}
             onChange={(v) => set("toc", v)}
-            label={value.toc ? "已启用" : "已关闭"}
+            label={value.toc ? t("已启用") : t("已关闭")}
           />
         </Field>
       </Group>
 
-      <Group title="说明" defaultOpen={false}>
+      <Group title={t("说明")} defaultOpen={false}>
         <div className="prose">
           <p>
-            <strong>Pandoc</strong> 适合 Markdown / HTML 等结构化文本，保真度最高；
-            <strong>LibreOffice</strong> 适合 Office 原生格式，兼容性好但对复杂排版可能失真。
+            <strong>Pandoc</strong>{" "}
+            {t("适合 Markdown / HTML 等结构化文本，保真度最高；")}
+            <strong>LibreOffice</strong>{" "}
+            {t("适合 Office 原生格式，兼容性好但对复杂排版可能失真。")}
           </p>
           <p>
-            PDF 源文件转可编辑格式时，程序会自动改用 Calibre 提取，因为它的文本与版面还原比
-            Office 引擎更可靠。
+            {t("PDF 源文件转可编辑格式时，程序会自动改用 Calibre 提取，因为它的文本与版面还原比 Office 引擎更可靠。")}
           </p>
         </div>
       </Group>
