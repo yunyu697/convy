@@ -7,9 +7,6 @@ dist-ssr
 src-tauri/target
 src-tauri/gen
 
-# 测试：vitest 的临时缓存目录（见 vitest.config.ts）
-.vitest-tmp
-
 # 图标：make_icon.py 是唯一来源，产物可重新生成
 icon-candidates/
 icon-src.png

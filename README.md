@@ -422,9 +422,9 @@ npm test
 # ✓ src/__tests__/ModuleShell.test.tsx  (5 tests)
 ```
 
-> `vitest.config.ts` 里关掉了 `fileParallelism`。vitest 2.x 的模块缓存按模块 id 做哈希，
-> 两个 worker 并发写同一个缓存文件时 Windows 会报 `EPERM`，然后把整个测试文件丢掉 ——
-> 表现是「只跑了一个文件，还显示通过」。串行跑两个文件不到 1 秒，不值得为它折腾。
+> 用 vitest 3.x。2.x 的模块缓存在两个 worker 并发时会把同一个缓存文件写崩（Windows 上直接
+> `EPERM`），然后**静默丢掉**受影响的测试文件 —— 表现是「只跑了一个文件，还显示通过」。
+> 3.x 修掉了这个问题，所以这里不需要任何绕行配置。
 
 ## 目录结构
 
