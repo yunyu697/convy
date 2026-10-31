@@ -163,6 +163,14 @@ jobs:
           path: all-artifacts
           merge-multiple: true
 
+      # 注意：这个 job 只下载了产物，工作区里并没有仓库文件 —— 不 checkout 的话
+      # 下面读 CHANGELOG.md 会直接 "No such file or directory"。v1.2.0 首发时就踩了这个坑，
+      # awk 的报错被 `|| true` 吞掉，于是悄悄走了「自动生成说明」的回退分支。
+      - uses: actions/checkout@v5
+        with:
+          # 要算「上一版是哪个 tag」，浅克隆拿不到 tag 历史
+          fetch-depth: 0
+
       # 应用里「设置 → 更新日志」显示的就是 Release 正文，所以正文得是给人读的。
       # GitHub 自动生成的说明靠 PR 归纳，而这个仓库直接往 master 提交，
       # 生成出来常常只有一行 Full Changelog 链接。改为从 CHANGELOG.md 取本版一节；
@@ -172,14 +180,19 @@ jobs:
         run: |
           set -euo pipefail
           ver="${GITHUB_REF_NAME#v}"
+          prev=$(git describe --tags --abbrev=0 "${GITHUB_REF_NAME}^" 2>/dev/null || true)
           awk -v pat="## ${ver}" '
             index($0, pat) == 1 { on = 1; next }
             on && index($0, "## ") == 1 { exit }
             on { print }
           ' CHANGELOG.md > notes.md || true
           if [ -s notes.md ]; then
+            if [ -n "$prev" ]; then
+              printf '\n**Full Changelog**: %s/%s/compare/%s...%s\n' \
+                "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$prev" "$GITHUB_REF_NAME" >> notes.md
+            fi
             echo "found=true" >> "$GITHUB_OUTPUT"
-            echo "已取到 ${ver} 的更新日志（$(wc -l < notes.md) 行）"
+            echo "已取到 ${ver} 的更新日志（$(wc -l < notes.md) 行），上一版 ${prev:-未知}"
           else
             echo "found=false" >> "$GITHUB_OUTPUT"
             echo "CHANGELOG.md 里没有 ${ver} 一节，改用自动生成的说明"
