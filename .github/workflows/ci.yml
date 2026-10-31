@@ -63,3 +63,39 @@ jobs:
 
       # package.json 里是 tsc --noEmit && vite build
       - run: npm run build
+
+  # 提前在 Linux / macOS 上做 cargo check，免得 release 矩阵里才第一次发现
+  # 跨平台编译问题（项目里有不少 #[cfg(windows)] 分支，但 macOS 分支也已存在）。
+  cross-check:
+    name: Rust · 跨平台编译检查
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+          - os: macos-latest
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: src-tauri
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: 安装 Linux 系统依赖
+        if: startsWith(matrix.os, 'ubuntu')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev
+
+      - name: cargo check --lib
+        run: cargo check --lib

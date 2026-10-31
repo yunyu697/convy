@@ -1,7 +1,7 @@
 name: Release
 
-# 只在推 tag（v0.1.0 这种）时才编译真正的安装包。日常提交走 ci.yml，
-# 不会被 15~25 分钟的 Tauri 打包拖慢。
+# 推 v* tag 时，按平台矩阵打包真正的安装包，最后汇总到一个 GitHub Release。
+# 日常提交走 ci.yml，不会被 15~25 分钟的 Tauri 打包拖慢。
 on:
   push:
     tags: ["v*"]
@@ -14,9 +14,35 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  windows:
-    name: Windows 安装包（NSIS + MSI）
-    runs-on: windows-latest
+  # 一台机器只打自己平台的包：Windows 出 msi/nsis + 便携 zip，
+  # macOS 出 dmg（arm64 / x64 各一台），Linux 出 deb/rpm/appimage + 裸二进制。
+  build:
+    name: 打包 ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: ""
+            build_args: "--bundles msi nsis"
+            artifact: convy-windows
+          - os: macos-latest
+            target: ""
+            # 每台 macOS runner打自己原生的架构（macos-latest=arm64，macos-13=x64），
+            # 不显式传 --target，产物就会落在标准的 target/release/bundle 下。
+            build_args: "--bundles dmg"
+            artifact: convy-macos-aarch64
+          - os: macos-13
+            target: ""
+            build_args: "--bundles dmg"
+            artifact: convy-macos-x86_64
+          - os: ubuntu-22.04
+            target: ""
+            # ubuntu-22.04 的 glibc 2.35 是 Tauri 2 的兼容性基线，
+            # 在更新的系统上打会要求更高的 glibc，老发行版跑不了。
+            build_args: "--bundles deb rpm appimage"
+            artifact: convy-linux
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
 
@@ -31,9 +57,14 @@ jobs:
         with:
           workspaces: src-tauri
 
-      # Tauri 2 的 MSI 需要 WiX Toolset v3（v4/v5 的 schema 不兼容）。
-      # runner 上是否自带取决于镜像版本，这里显式装一遍才可控。
-      - name: 安装 WiX Toolset 3.14
+      # 非宿主（macOS 交叉/显式 target）时补上对应的 Rust target。
+      - name: 添加 Rust target
+        if: matrix.target != ''
+        run: rustup target add ${{ matrix.target }}
+
+      # Windows 的 MSI 需要 WiX Toolset v3（v4/v5 的 schema 不兼容）。
+      - name: 安装 WiX Toolset 3.14（仅 Windows）
+        if: matrix.os == 'windows-latest'
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -44,30 +75,86 @@ jobs:
           Add-Content -Path $env:GITHUB_PATH -Value 'C:\wix'
           Write-Host "已安装 WiX：$(candle.exe -? 2>&1 | Select-Object -First 1)"
 
+      # Linux 需要 WebKitGTK 4.1 + GTK + AppIndicator 头文件；
+      # deb/rpm 打包用 FPM（Ruby），rpm 还需要 rpmbuild、deb 需要 dpkg-deb。
+      - name: 安装 Linux 系统依赖
+        if: startsWith(matrix.os, 'ubuntu')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            appstream \
+            dpkg-dev \
+            rpm \
+            ruby ruby-dev build-essential
+
+      - name: 安装 FPM（Tauri 打 deb/rpm 的依赖）
+        if: startsWith(matrix.os, 'ubuntu')
+        run: |
+          sudo gem install --no-document fpm
+          echo "$(ruby -e 'puts Gem.bindir')" >> "$GITHUB_PATH"
+
       - run: npm ci
 
-      # 跑 beforeBuildCommand（tsc + vite build）再打 msi / nsis
+      # 跑 beforeBuildCommand（tsc + vite build）再按平台打包
       - name: tauri build
-        run: npm run app:build
+        run: npm run app:build -- ${{ matrix.build_args }}
 
-      - name: 收集产物
+      # 通用：把 bundle 产物收进 release/
+      - name: 收集安装包
+        shell: bash
+        run: |
+          mkdir -p release
+          find src-tauri/target/release/bundle -type f -exec cp -t release/ {} + 2>/dev/null || true
+          ls -la release
+
+      # Windows 额外打包便携版（exe + 已声明的 resources）
+      - name: 打包 Windows 便携 zip
+        if: matrix.os == 'windows-latest'
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force -Path release | Out-Null
-          Get-ChildItem src-tauri\target\release\bundle\nsis\*.exe |
-            Copy-Item -Destination release\
-          Get-ChildItem src-tauri\target\release\bundle\msi\*.msi |
-            Copy-Item -Destination release\
-          Get-ChildItem release | Format-Table Name, Length
+          $tmp = "$env:RUNNER_TEMP/convy-portable"
+          New-Item -ItemType Directory -Force -Path $tmp | Out-Null
+          Copy-Item src-tauri/target/release/convy.exe -Destination $tmp/
+          New-Item -ItemType Directory -Force -Path $tmp/resources/engines | Out-Null
+          Copy-Item src-tauri/engines/README.md -Destination $tmp/resources/engines/ -ErrorAction SilentlyContinue
+          Compress-Archive -Path $tmp/* -DestinationPath release/Convy-portable-win64.zip
+          ls -la release
+
+      # Linux 额外打包裸二进制（供不想装包管理器的用户直接跑）
+      - name: 打包 Linux 裸二进制
+        if: startsWith(matrix.os, 'ubuntu')
+        run: |
+          mkdir -p portable/resources/engines
+          cp src-tauri/target/release/convy portable/ 2>/dev/null || true
+          cp src-tauri/engines/README.md portable/resources/engines/ 2>/dev/null || true
+          tar -czf release/Convy-linux-x86_64-bin.tar.gz -C portable .
+          ls -la release
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Convy-Windows
+          name: ${{ matrix.artifact }}
           path: release/*
           if-no-files-found: error
 
-      - name: 发布到 GitHub Release
+  # 所有平台的包收齐后，一次性发到同一个 GitHub Release。
+  publish:
+    name: 发布到 GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: 下载全部产物
+        uses: actions/download-artifact@v4
+        with:
+          path: all-artifacts
+          merge-multiple: true
+
+      - name: 发布
         uses: softprops/action-gh-release@v2
         with:
-          files: release/*
+          files: all-artifacts/*
           generate_release_notes: true
