@@ -1,0 +1,51 @@
+[package]
+name = "convy"
+version = "0.1.0"
+description = "Convy - cross-platform file format converter"
+authors = ["Convy"]
+edition = "2021"
+rust-version = "1.77"
+
+[lib]
+name = "convy_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[features]
+# 生产构建必须启用，否则应用会一直去连 devUrl 而不是加载内嵌资源。
+# `tauri build` 会自动加上它；手动 cargo build --release 时需要显式指定。
+custom-protocol = ["tauri/custom-protocol"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+tauri-plugin-opener = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = [
+  "rt-multi-thread",
+  "macros",
+  "process",
+  "io-util",
+  "sync",
+  "time",
+  "fs",
+] }
+uuid = { version = "1", features = ["v4"] }
+# 引擎自动下载 / 更新 / 回退
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream", "json"] }
+zip = { version = "2.2", default-features = false, features = ["deflate"] }
+tar = "0.4"
+flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
+lzma-rs = "0.3"
+regex = "1"
+futures-util = "0.3"
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+panic = "abort"
+strip = true

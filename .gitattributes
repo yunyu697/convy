@@ -1,0 +1,13 @@
+# 统一换行符。开发者在 Windows、CI 跑在 ubuntu 时最容易踩的坑就是
+# 整个仓库「全文件已修改」，所以这里显式钉死 LF；只有必须在 Windows 上
+# 双击运行的脚本保留 CRLF。
+* text=auto eol=lf
+
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# 图标资源不能被当成文本改写
+*.png binary
+*.ico binary
+*.icns binary

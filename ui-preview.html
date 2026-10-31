@@ -1,0 +1,367 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Convy 界面预览 · 视频转换模块</title>
+    <link rel="stylesheet" href="./src/styles.css" />
+    <style>
+      /* 预览页专用：模拟 :root 的 accent 变量（真实应用由 JS 注入） */
+      :root {
+        --accent: #185fa5;
+        --accent-soft: rgba(24, 95, 165, 0.12);
+        --accent-line: rgba(24, 95, 165, 0.32);
+      }
+      .previewbar {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        z-index: 999;
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        padding: 8px 16px;
+        background: #1b1d21;
+        color: #fff;
+        font-size: 12px;
+      }
+      .previewbar button {
+        color: #fff;
+        border: 1px solid #4a4d55;
+        border-radius: 6px;
+        padding: 3px 10px;
+        font-size: 11.5px;
+      }
+      .previewbar button:hover {
+        background: #33363d;
+      }
+      body {
+        padding-bottom: 44px;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root">
+      <div class="app">
+        <!-- ============ 侧边栏 ============ -->
+        <aside class="sidebar">
+          <div class="sidebar__brand">
+            <div class="sidebar__logo">⬢</div>
+            <div class="sidebar__brandtext">
+              <strong>Convy</strong>
+              <span>万象转换</span>
+            </div>
+          </div>
+
+          <nav class="sidebar__nav">
+            <div class="sidebar__group">
+              <div class="sidebar__grouptitle">转换</div>
+              <button class="navitem is-active">
+                <span class="navitem__icon">▶</span>
+                <span class="navitem__label">视频转换</span>
+              </button>
+              <button class="navitem">
+                <span class="navitem__icon">♪</span>
+                <span class="navitem__label">音频转换</span>
+              </button>
+              <button class="navitem">
+                <span class="navitem__icon">◈</span>
+                <span class="navitem__label">图片转换</span>
+              </button>
+              <button class="navitem">
+                <span class="navitem__icon">❦</span>
+                <span class="navitem__label">电子书转换</span>
+                <span class="navitem__warn">!</span>
+              </button>
+              <button class="navitem">
+                <span class="navitem__icon">▤</span>
+                <span class="navitem__label">文档转换</span>
+              </button>
+            </div>
+            <div class="sidebar__group">
+              <div class="sidebar__grouptitle">系统</div>
+              <button class="navitem">
+                <span class="navitem__icon">⬡</span>
+                <span class="navitem__label">引擎管理</span>
+              </button>
+              <button class="navitem">
+                <span class="navitem__icon">⚙</span>
+                <span class="navitem__label">全局设置</span>
+              </button>
+            </div>
+          </nav>
+
+          <div class="sidebar__foot">
+            <div class="hwchip">
+              <span class="hwchip__dot is-hw"></span>
+              NVENC（NVIDIA 硬件）
+            </div>
+            <div class="sidebar__pending">2 个任务待处理</div>
+          </div>
+        </aside>
+
+        <!-- ============ 主区 ============ -->
+        <main class="main">
+          <header class="topbar">
+            <div class="topbar__heading">
+              <h1 class="topbar__title">视频转换</h1>
+              <p class="topbar__sub">转码、压缩、改分辨率与封装格式</p>
+            </div>
+            <div class="topbar__actions">
+              <div class="themepicker">
+                <button class="themepicker__trigger">
+                  <span class="themepicker__swatch">
+                    <i style="background: #ffffff"></i>
+                    <i style="background: #f4f5f7"></i>
+                    <i style="background: #185fa5"></i>
+                  </span>
+                  <span class="themepicker__name">晨曦</span>
+                </button>
+              </div>
+            </div>
+          </header>
+
+          <div class="main__body">
+            <div class="module">
+              <!-- 预设栏 -->
+              <div class="presetbar">
+                <span class="presetbar__label">预设</span>
+                <div class="presetbar__chips">
+                  <span class="presetchip">
+                    <button class="presetchip__main is-active">网页高清 1080p</button>
+                  </span>
+                  <span class="presetchip">
+                    <button class="presetchip__main">手机兼容 H.264</button>
+                  </span>
+                  <span class="presetchip">
+                    <button class="presetchip__main">极致压缩</button>
+                  </span>
+                  <span class="presetchip">
+                    <button class="presetchip__main">无损存档</button>
+                  </span>
+                  <span class="presetchip">
+                    <button class="presetchip__main">我的vlog参数</button>
+                    <button class="presetchip__del">×</button>
+                  </span>
+                  <button class="presetchip presetchip--new">＋ 保存当前</button>
+                </div>
+              </div>
+
+              <div class="module__grid">
+                <!-- 左：精细化设置 -->
+                <aside class="module__settings">
+                  <div class="panelhead">
+                    <span class="panelhead__icon">▶</span>
+                    <div>
+                      <h2 class="panelhead__title">视频参数</h2>
+                      <p class="panelhead__desc">转码、压缩、改分辨率与封装格式</p>
+                    </div>
+                  </div>
+
+                  <div class="module__settingsbody">
+                    <section class="group is-open">
+                      <button class="group__head">
+                        <span class="group__chev">▸</span>
+                        <span class="group__title">基础</span>
+                        <span class="group__desc">画质档位与分辨率</span>
+                      </button>
+                      <div class="group__body">
+                        <div class="field">
+                          <span class="field__label">质量档位</span>
+                          <span class="field__control">
+                            <div class="segmented">
+                              <button>高质量</button>
+                              <button class="is-active">均衡</button>
+                              <button>小体积</button>
+                            </div>
+                          </span>
+                        </div>
+                        <div class="field">
+                          <span class="field__label">
+                            分辨率 <em class="field__hint">长边优先，保持画面比例</em>
+                          </span>
+                          <span class="field__control">
+                            <div class="select">
+                              <select>
+                                <option>保持原始分辨率</option>
+                                <option selected>Full HD · 1920×1080</option>
+                                <option>HD · 1280×720</option>
+                              </select>
+                              <span class="select__arrow">▾</span>
+                            </div>
+                          </span>
+                        </div>
+                        <div class="field">
+                          <span class="field__label">视频编码器</span>
+                          <span class="field__control">
+                            <div class="select">
+                              <select>
+                                <option selected>自动匹配容器</option>
+                                <option>H.264 / AVC</option>
+                                <option>H.265 / HEVC</option>
+                              </select>
+                              <span class="select__arrow">▾</span>
+                            </div>
+                          </span>
+                        </div>
+                      </div>
+                    </section>
+
+                    <section class="group is-open">
+                      <button class="group__head">
+                        <span class="group__chev">▸</span>
+                        <span class="group__title">硬件加速</span>
+                        <span class="group__desc">优先显卡编码</span>
+                      </button>
+                      <div class="group__body">
+                        <div class="field">
+                          <span class="field__label">加速模式</span>
+                          <span class="field__control">
+                            <div class="segmented">
+                              <button class="is-active">自动</button>
+                              <button>强制指定</button>
+                              <button>关闭</button>
+                            </div>
+                          </span>
+                        </div>
+                        <div class="field">
+                          <span class="field__label">CRF</span>
+                          <span class="field__control">
+                            <div class="slider">
+                              <input type="range" min="0" max="51" value="23" style="--pct: 45%" />
+                              <span class="slider__value">23</span>
+                            </div>
+                          </span>
+                        </div>
+                      </div>
+                    </section>
+                  </div>
+                </aside>
+
+                <!-- 右：文件与队列 -->
+                <section class="module__work">
+                  <div class="dropzone">
+                    <div class="dropzone__ring">
+                      <svg width="34" height="34" viewBox="0 0 24 24" fill="none">
+                        <path
+                          d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5"
+                          stroke="currentColor"
+                          stroke-width="1.5"
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                        />
+                        <path
+                          d="M4 15v3.5A1.5 1.5 0 005.5 20h13a1.5 1.5 0 001.5-1.5V15"
+                          stroke="currentColor"
+                          stroke-width="1.5"
+                          stroke-linecap="round"
+                        />
+                      </svg>
+                    </div>
+                    <p class="dropzone__title">拖入视频文件或文件夹</p>
+                    <p class="dropzone__hint">或点击选择文件 / 文件夹 · 支持批量与子目录</p>
+                  </div>
+
+                  <div class="queue">
+                    <div class="queue__head">
+                      <div class="queue__counts">
+                        <span class="queue__count">共 <b>3</b> 项</span>
+                        <span class="queue__count queue__count--pending">待处理 <b>1</b></span>
+                        <span class="queue__count queue__count--done">已完成 <b>1</b></span>
+                      </div>
+                      <div class="queue__tools">
+                        <button class="btn btn--ghost">清理已完成</button>
+                        <button class="btn btn--primary">开始转换 (1)</button>
+                      </div>
+                    </div>
+
+                    <div class="queue__list">
+                      <div class="row row--running">
+                        <div class="row__badge" data-domain="video">MP4</div>
+                        <div class="row__info">
+                          <div class="row__name">产品发布会录制.mp4</div>
+                          <div class="row__meta">
+                            842 MB <span class="row__dot">·</span> 视频
+                            <span class="row__speed">2.4x</span>
+                          </div>
+                        </div>
+                        <div class="row__arrow">→</div>
+                        <select class="row__select"><option>WEBM</option></select>
+                        <div class="row__status">
+                          <div class="bar">
+                            <div class="bar__fill" style="width: 63%"></div>
+                            <span class="bar__label">63%</span>
+                          </div>
+                        </div>
+                        <button class="row__close">×</button>
+                      </div>
+
+                      <div class="row row--done">
+                        <div class="row__badge" data-domain="video">MOV</div>
+                        <div class="row__info">
+                          <div class="row__name">实拍素材_0142.mov</div>
+                          <div class="row__meta">
+                            <span class="sizecmp__from">1.2 GB</span>
+                            <span class="row__dot">→</span>
+                            <b class="sizecmp__to">412 MB</b>
+                            <span class="sizecmp is-smaller">-66%</span>
+                          </div>
+                        </div>
+                        <div class="row__arrow">→</div>
+                        <select class="row__select"><option>MP4</option></select>
+                        <div class="row__status">
+                          <div class="row__actions">
+                            <button class="linkbtn">打开</button>
+                            <button class="linkbtn">所在文件夹</button>
+                          </div>
+                        </div>
+                        <button class="row__close">×</button>
+                      </div>
+
+                      <div class="row row--pending">
+                        <div class="row__badge" data-domain="video">MKV</div>
+                        <div class="row__info">
+                          <div class="row__name">动画合集_第01话.mkv</div>
+                          <div class="row__meta">
+                            <span class="row__dir" title="来自子文件夹：动画/第01季">动画/第01季</span>
+                            512 MB <span class="row__dot">·</span> 视频
+                          </div>
+                        </div>
+                        <div class="row__arrow">→</div>
+                        <select class="row__select"><option>MP4</option></select>
+                        <div class="row__status">
+                          <span class="row__idle" style="color: #888780">等待中</span>
+                        </div>
+                        <button class="row__close">×</button>
+                      </div>
+                    </div>
+                  </div>
+                </section>
+              </div>
+            </div>
+          </div>
+        </main>
+      </div>
+    </div>
+
+    <!-- 预览页主题切换（真实应用在右上角下拉里切换） -->
+    <div class="previewbar">
+      <span>主题预览：</span>
+      <button onclick="setTheme('light')">晨曦</button>
+      <button onclick="setTheme('dark')">暗夜</button>
+      <button onclick="setTheme('midnight')">深海</button>
+      <button onclick="setTheme('solar')">暖阳</button>
+      <button onclick="setTheme('forest')">松林</button>
+      <button onclick="setTheme('rose')">胭脂</button>
+      <button onclick="setTheme('grape')">藤紫</button>
+      <button onclick="setTheme('sand')">素沙</button>
+    </div>
+
+    <script>
+      function setTheme(id) {
+        document.documentElement.dataset.theme = id;
+      }
+    </script>
+  </body>
+</html>

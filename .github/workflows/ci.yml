@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+    tags-ignore: ["v*"] # tag 交给 release.yml，这里不重复跑
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: "1"
+
+jobs:
+  # 为什么 Rust 的活放在 windows-latest：项目实际只发布 NSIS / MSI，
+  # 而且 src-tauri 里有 #[cfg(windows)] 分支（import.rs 的符号链接防护、
+  # lib.rs 的路径处理），跑 Linux 根本覆盖不到 —— 顺带还省掉了 Tauri 在
+  # Linux 上的那一堆 webkit / gtk 系统依赖。
+  rust:
+    name: Rust · 格式 / lint / 测试
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: src-tauri
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: rustfmt（不允许未格式化的代码入库）
+        run: cargo fmt --all -- --check
+
+      - name: clippy（警告视为失败）
+        run: cargo clippy --all-targets -- -D warnings
+
+      # 端到端测试在系统缺少 ffmpeg / ImageMagick 等引擎时会自动跳过，
+      # 所以这套测试在任何机器上都应该是绿的。
+      - name: cargo test
+        run: cargo test --all
+
+  web:
+    name: 前端 · 类型检查 / 构建
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      # package.json 里是 tsc --noEmit && vite build
+      - run: npm run build

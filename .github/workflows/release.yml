@@ -1,0 +1,73 @@
+name: Release
+
+# 只在推 tag（v0.1.0 这种）时才编译真正的安装包。日常提交走 ci.yml，
+# 不会被 15~25 分钟的 Tauri 打包拖慢。
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  windows:
+    name: Windows 安装包（NSIS + MSI）
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      # Tauri 2 的 MSI 需要 WiX Toolset v3（v4/v5 的 schema 不兼容）。
+      # runner 上是否自带取决于镜像版本，这里显式装一遍才可控。
+      - name: 安装 WiX Toolset 3.14
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Invoke-WebRequest `
+            -Uri https://github.com/wixtoolset/wix3/releases/download/wix3141rtm/wix314-binaries.zip `
+            -OutFile "$env:RUNNER_TEMP\wix314.zip"
+          Expand-Archive -Force "$env:RUNNER_TEMP\wix314.zip" -DestinationPath C:\wix
+          Add-Content -Path $env:GITHUB_PATH -Value 'C:\wix'
+          Write-Host "已安装 WiX：$(candle.exe -? 2>&1 | Select-Object -First 1)"
+
+      - run: npm ci
+
+      # 跑 beforeBuildCommand（tsc + vite build）再打 msi / nsis
+      - name: tauri build
+        run: npm run app:build
+
+      - name: 收集产物
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path release | Out-Null
+          Get-ChildItem src-tauri\target\release\bundle\nsis\*.exe |
+            Copy-Item -Destination release\
+          Get-ChildItem src-tauri\target\release\bundle\msi\*.msi |
+            Copy-Item -Destination release\
+          Get-ChildItem release | Format-Table Name, Length
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Convy-Windows
+          path: release/*
+          if-no-files-found: error
+
+      - name: 发布到 GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release/*
+          generate_release_notes: true
