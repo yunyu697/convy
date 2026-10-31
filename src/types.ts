@@ -359,6 +359,10 @@ export interface EngineUpdateResult {
   savedPath: string | null;
   homepage: string | null;
   installed: boolean;
+  /** 是否用官方哈希校验过下载内容；null = 本次操作不涉及可校验的下载 */
+  verified: boolean | null;
+  /** 未校验时给用户看的原因 */
+  verifyNote: string | null;
 }
 
 export interface EngineProgress {

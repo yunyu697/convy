@@ -8,6 +8,7 @@
 //!
 //! 进度通过 `ProgressCb` 回调上抛，命令层再转成前端事件，便于做下载进度动画。
 
+use super::integrity;
 use super::layout;
 use super::manifest::{platform_key, DownloadSpec, EngineDef, EngineManifest};
 use crate::probe::Engines;
@@ -112,6 +113,12 @@ pub struct EngineUpdateResult {
     pub homepage: Option<String>,
     /// 是否已被托管目录自动启用（zip/tar 类）
     pub installed: bool,
+    /// 是否用官方哈希校验过下载内容。`None` 表示这次操作不涉及可校验的下载
+    /// （外链 / 官网页面）。界面必须把 `false` 如实显示出来 —— 静默「看起来成功」
+    /// 会让用户以为装上去的东西一定来自官方。
+    pub verified: Option<bool>,
+    /// 未校验时给用户看的原因
+    pub verify_note: Option<String>,
 }
 
 impl EngineManager {
@@ -309,6 +316,76 @@ impl EngineManager {
         }
     }
 
+    /// 校验刚下载的包。
+    ///
+    /// - 返回 `Err`：内容与可信哈希**不符**，调用方必须删除并中止
+    /// - 返回 `Ok(verified: false)`：没有可信哈希可比对，允许继续，但要如实告知用户
+    ///
+    /// 为什么镜像包不做官方哈希比对：清单里的 `mirror` 常常指向**另一个构建**
+    /// （FFmpeg 官方是 gyan.dev，镜像是 BtbN 的 GPL 构建），两者哈希天然不同。
+    /// 硬拿官方哈希去比，只会让镜像永远失败 —— 那是把安全做成了功能故障。
+    async fn verify_download(
+        &self,
+        spec: &DownloadSpec,
+        download_url: &str,
+        path: &Path,
+    ) -> Result<integrity::VerifyOutcome, String> {
+        let actual = integrity::sha256_file(path)?;
+
+        // 1) 清单写死的哈希：最强约束，不依赖任何网络
+        if let Some(expected) = spec.sha256.as_deref().and_then(integrity::parse_sha256) {
+            integrity::compare(&actual, &expected)?;
+            return Ok(integrity::VerifyOutcome {
+                verified: true,
+                actual,
+                expected: Some(expected),
+                note: None,
+            });
+        }
+
+        // 2) 官方哈希文件：只有下载源就是官方地址时才可比对
+        let has_hash_source = spec
+            .sha256_url
+            .as_deref()
+            .is_some_and(|u| !u.trim().is_empty());
+        if has_hash_source {
+            if download_url != spec.url {
+                return Ok(integrity::VerifyOutcome {
+                    verified: false,
+                    actual,
+                    expected: None,
+                    note: Some("下载源是镜像（与官方包不是同一个构建），无法比对官方哈希".into()),
+                });
+            }
+            let hash_url = spec.sha256_url.as_deref().unwrap_or_default();
+            match integrity::fetch_expected(hash_url).await {
+                Ok(expected) => {
+                    integrity::compare(&actual, &expected)?;
+                    Ok(integrity::VerifyOutcome {
+                        verified: true,
+                        actual,
+                        expected: Some(expected),
+                        note: None,
+                    })
+                }
+                // 取不到哈希不等于包有问题，但必须让用户知道「这次没验成」
+                Err(e) => Ok(integrity::VerifyOutcome {
+                    verified: false,
+                    actual,
+                    expected: None,
+                    note: Some(format!("无法获取官方校验值（{e}）")),
+                }),
+            }
+        } else {
+            Ok(integrity::VerifyOutcome {
+                verified: false,
+                actual,
+                expected: None,
+                note: Some("清单未提供校验值".into()),
+            })
+        }
+    }
+
     /// 下载并启用（或下载安装包到目录）。`mirror_url` 指定镜像源；None 用官方原地址。
     pub async fn update(
         &self,
@@ -350,7 +427,26 @@ impl EngineManager {
         cb("download", 0.0, "正在连接下载服务器…");
         download_to_file(app, &url, &tmp_archive, &cb).await?;
 
-        cb("extract", 0.85, "正在解压…");
+        // 完整性校验必须发生在解压**之前**：解压完就会跑里面的二进制探测版本，
+        // 那一步已经是执行不可信代码了。校验失败一律删包中止，绝不留到下一步。
+        cb("verify", 0.85, "正在校验安装包完整性…");
+        let outcome = match self.verify_download(spec, &url, &tmp_archive).await {
+            Ok(o) => o,
+            Err(e) => {
+                let _ = std::fs::remove_file(&tmp_archive);
+                let _ = std::fs::remove_dir_all(&staging);
+                return Err(e);
+            }
+        };
+        if !outcome.verified {
+            cb(
+                "verify",
+                0.86,
+                &format!("{}（继续安装）", outcome.summary()),
+            );
+        }
+
+        cb("extract", 0.87, "正在解压…");
         extract(&tmp_archive, &staging, &spec.kind).map_err(|e| format!("解压失败：{}", e))?;
         let _ = std::fs::remove_file(&tmp_archive);
 
@@ -415,6 +511,8 @@ impl EngineManager {
             saved_path: None,
             homepage: None,
             installed: true,
+            verified: Some(outcome.verified),
+            verify_note: outcome.note,
         })
     }
 
@@ -451,6 +549,17 @@ impl EngineManager {
             cb("download", 0.0, "正在下载安装包…");
             // 复用下载逻辑但无需进度回调复杂化
             download_to_file(_app, url, &dest, &cb).await?;
+
+            // 安装包类同样校验：用户接下来会双击它，投毒后果与托管引擎一样严重
+            cb("verify", 0.9, "正在校验安装包完整性…");
+            let outcome = match self.verify_download(spec, url, &dest).await {
+                Ok(o) => o,
+                Err(e) => {
+                    let _ = std::fs::remove_file(&dest);
+                    return Err(e);
+                }
+            };
+
             cb("done", 1.0, "安装包已保存到引擎目录");
             Ok(EngineUpdateResult {
                 id: def.id.clone(),
@@ -458,6 +567,8 @@ impl EngineManager {
                 saved_path: Some(dest.to_string_lossy().to_string()),
                 homepage: None,
                 installed: false,
+                verified: Some(outcome.verified),
+                verify_note: outcome.note,
             })
         } else {
             // 仅提供官网页面，由前端打开
@@ -468,6 +579,8 @@ impl EngineManager {
                 saved_path: None,
                 homepage: spec.homepage.clone(),
                 installed: false,
+                verified: None,
+                verify_note: None,
             })
         }
     }
@@ -754,11 +867,23 @@ async fn download_to_file(
     dest: &Path,
     cb: &ProgressCb,
 ) -> Result<(), String> {
-    let resp = reqwest::Client::new()
-        .get(url)
-        .send()
-        .await
-        .map_err(|e| format!("下载请求失败：{}", e))?;
+    // 连不上要在 15 秒内失败，而不是让「正在连接下载服务器…」无限转圈；
+    // 整体给 30 分钟上限，避免慢速链路上永远挂着一个半死不活的任务。
+    // 带 UA：部分镜像 / CDN 会拒绝没有标识的客户端。
+    let client = reqwest::Client::builder()
+        .connect_timeout(Duration::from_secs(15))
+        .timeout(Duration::from_secs(30 * 60))
+        .user_agent(USER_AGENT)
+        .build()
+        .map_err(|e| format!("创建下载请求失败：{}", e))?;
+
+    let resp = client.get(url).send().await.map_err(|e| {
+        if e.is_timeout() {
+            "下载超时：服务器长时间无响应".to_string()
+        } else {
+            format!("下载请求失败：{}", e)
+        }
+    })?;
     if !resp.status().is_success() {
         return Err(format!("下载失败，HTTP 状态 {}", resp.status()));
     }

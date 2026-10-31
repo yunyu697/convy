@@ -21,3 +21,14 @@ desktop.ini
 .vscode
 .idea
 *.swp
+
+# 凭据：任何临时 token / 环境变量文件都不许入库
+.gh_token_tmp
+.gh_token*
+.env
+.env.*
+
+# 引擎二进制：只保留说明文档。发布版若把 ffmpeg.exe 等放进这里，
+# 单个体积上百 MB，一旦提交就再也删不干净，因此一律忽略。
+src-tauri/engines/*
+!src-tauri/engines/README.md

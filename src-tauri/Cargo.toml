@@ -1,10 +1,13 @@
 [package]
 name = "convy"
-version = "0.1.0"
+version = "1.0.0"
 description = "Convy - cross-platform file format converter"
 authors = ["Convy"]
 edition = "2021"
 rust-version = "1.77"
+license = "MIT"
+repository = "https://github.com/yunyu697/convy"
+readme = "../README.md"
 
 [lib]
 name = "convy_lib"
@@ -42,6 +45,8 @@ flate2 = { version = "1", default-features = false, features = ["rust_backend"] 
 lzma-rs = "0.3"
 regex = "1"
 futures-util = "0.3"
+# 引擎包下载后的完整性校验
+sha2 = "0.10"
 
 [profile.release]
 codegen-units = 1

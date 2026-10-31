@@ -399,10 +399,18 @@ export default function EngineModule({
     const url = mirrorSel[e.id] || null;
     try {
       const r = await api.engineUpdate(e.id, url);
+      // 校验状态必须如实说出来：静默显示「已安装」会让用户以为装上去的
+      // 一定来自官方。镜像源尤其需要提示 —— 那是最容易被投毒的一环。
+      const trust =
+        r.verified === true
+          ? "（已校验 SHA-256）"
+          : r.verified === false
+            ? `（未校验：${r.verifyNote ?? "无可用校验值"}）`
+            : "";
       if (r.installed) {
-        onToast("ok", `${e.label} ${r.version ?? ""} 已安装并启用`);
+        onToast(r.verified === false ? "info" : "ok", `${e.label} ${r.version ?? ""} 已安装并启用${trust}`);
       } else if (r.savedPath) {
-        onToast("info", `${e.label} 安装包已保存到 ${r.savedPath}`);
+        onToast("info", `${e.label} 安装包已保存到 ${r.savedPath}${trust}`);
       } else if (r.homepage) {
         onToast("info", `请前往官网下载 ${e.label}`);
         await api.openUrl(r.homepage);

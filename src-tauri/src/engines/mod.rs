@@ -4,6 +4,7 @@ pub mod document;
 pub mod ebook;
 pub mod ffmpeg;
 pub mod image;
+pub mod integrity;
 pub mod layout;
 pub mod manifest;
 pub mod registry;

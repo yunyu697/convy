@@ -59,6 +59,17 @@ pub struct DownloadSpec {
     /// 解压后要删除的、转换用不到的组件（相对路径），如 ffplay / doc / presets
     #[serde(default)]
     pub prune: Vec<String>,
+    /// 官方发布的 SHA-256 校验值文件地址。
+    ///
+    /// 取这个地址时**一律直连，绝不套镜像前缀** —— 否则攻击者同时替换包和哈希即可绕过校验。
+    /// 只在下载地址等于 `url`（官方原地址）时生效：镜像往往放的是另一个构建
+    /// （例如 FFmpeg 官方是 gyan.dev，镜像是 BtbN），哈希天然不同。
+    #[serde(default)]
+    pub sha256_url: Option<String>,
+    /// 写死的期望哈希，优先级高于 `sha256_url`。
+    /// 用于「固定版本直链」或用户自定义 manifest 时锁定某个已知包。
+    #[serde(default)]
+    pub sha256: Option<String>,
     /// 安装包体积与必需组件说明，展示在引擎管理页
     #[serde(default)]
     pub size_hint: Option<String>,
@@ -148,6 +159,7 @@ const BUILTIN: &str = r#"
           },
           "homepage": "https://www.gyan.dev/ffmpeg/builds/",
           "prune": ["bin/ffplay.exe", "doc", "presets"],
+          "sha256Url": "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip.sha256",
           "sizeHint": "下载约 115 MB；转换只需要 bin 下的 ffmpeg.exe + ffprobe.exe，ffplay、doc、presets 解压后会自动清理"
         },
         "darwin-x86_64": {
