@@ -10,6 +10,7 @@ pub mod runner;
 pub mod selfcheck;
 pub mod settings;
 pub mod spawn;
+pub mod updater;
 
 use engines::registry::{
     EngineCheck, EngineManager, EngineStatus, EngineUpdateResult, MirrorTest, ProgressCb,
