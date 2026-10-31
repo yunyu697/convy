@@ -244,7 +244,8 @@ async fn mirror_order(pref_mirror: &str) -> Vec<AppMirror> {
 
 async fn fetch_release(url: &str) -> Result<Release, String> {
     let text = fetch_text(url).await?;
-    let rel: GhRelease = serde_json::from_str(&text).map_err(|e| format!("无法解析版本信息：{e}"))?;
+    let rel: GhRelease =
+        serde_json::from_str(&text).map_err(|e| format!("无法解析版本信息：{e}"))?;
     if rel.draft {
         return Err("最新版本还是草稿".to_string());
     }
@@ -486,7 +487,10 @@ mod tests {
 
     #[test]
     fn notes_trimmed_and_normalized() {
-        assert_eq!(clean_notes("\n\n  hello  \nworld\r\n\n\n"), "  hello\nworld");
+        assert_eq!(
+            clean_notes("\n\n  hello  \nworld\r\n\n\n"),
+            "  hello\nworld"
+        );
         assert_eq!(clean_notes(""), "");
     }
 
