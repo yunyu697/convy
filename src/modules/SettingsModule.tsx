@@ -88,7 +88,7 @@ export default function SettingsModule({
             </div>
           </Field>
 
-          <Field label={t("语言")} hint={t("切换后界面立即生效")}>
+          <Field label={t("语言")} hint={t("切换后界面立即生效")} wide>
             <div className="langgrid">
               {LANGUAGES.map((l) => (
                 <button
@@ -115,6 +115,17 @@ export default function SettingsModule({
             />
           </Field>
 
+          <Field label={t("同名文件")} hint={t("已存在同名输出时")}>
+            <Segmented
+              value={value.overwrite ? "overwrite" : "rename"}
+              onChange={(v) => set("overwrite", v === "overwrite")}
+              options={[
+                { value: "rename", label: t("自动重命名 (1)(2)") },
+                { value: "overwrite", label: t("直接覆盖") },
+              ]}
+            />
+          </Field>
+
           <Field label={t("输出目录")} hint={t("留空表示输出到源文件所在目录")} wide>
             <div className="field__row field__row--path">
               <input
@@ -136,17 +147,6 @@ export default function SettingsModule({
                 </button>
               )}
             </div>
-          </Field>
-
-          <Field label={t("同名文件")} hint={t("已存在同名输出时")}>
-            <Segmented
-              value={value.overwrite ? "overwrite" : "rename"}
-              onChange={(v) => set("overwrite", v === "overwrite")}
-              options={[
-                { value: "rename", label: t("自动重命名 (1)(2)") },
-                { value: "overwrite", label: t("直接覆盖") },
-              ]}
-            />
           </Field>
 
           <Field
@@ -181,7 +181,7 @@ export default function SettingsModule({
         </Group>
 
         <Group title={t("关于")} defaultOpen={false}>
-          <Field label={t("新手引导")} hint={t("忘了怎么开始？重新走一遍三步设置")}>
+          <Field label={t("新手引导")} hint={t("忘了怎么开始？重新走一遍三步设置")} wide>
             <button type="button" className="btn btn--ghost" onClick={onShowGuide}>
               {t("重新查看")}
             </button>

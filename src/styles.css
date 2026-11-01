@@ -2676,8 +2676,42 @@ code {
 
 /* ---------------------------------------------------------------- 全局设置 */
 
+/* 设置页原来锁死 760px，窗口一拉宽右边就空掉一大块。
+   改成「宽度随窗口增长 + 字段分两列」：单纯把卡片拉宽只会让单列表单
+   变得又长又稀，真正用上空间得让字段并排。 */
 .settingspage {
-  max-width: 760px;
+  width: 100%;
+  max-width: 1240px;
+  /* 宽窗口里居中，而不是贴着左边留一条空荡的右边 */
+  margin-inline: auto;
+}
+
+@media (min-width: 1000px) {
+  .settingspage .group__body {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 26px;
+    align-content: start;
+    /* 顶对齐：同一行两个字段高度不同时，控件跟着各自的标签走，
+       而不是被拉到行底 —— 后者会在中间留出一段莫名其妙的空白 */
+    align-items: start;
+  }
+
+  /* 默认整行：更新面板、更新日志、关于说明这些不是「字段」的块，
+     不该被塞进半列里 */
+  .settingspage .group__body > * {
+    grid-column: 1 / -1;
+  }
+
+  /* 普通字段占一列，`wide` 与「组里只有这一个字段」的占整行 */
+  .settingspage .group__body > .field {
+    grid-column: auto;
+  }
+
+  .settingspage .group__body > .field--wide,
+  .settingspage .group__body > .field:only-child {
+    grid-column: 1 / -1;
+  }
 }
 
 .settingspage__card {
