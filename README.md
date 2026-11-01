@@ -136,7 +136,7 @@ npm test             # 前端单元测试（vitest）
 #    package.json / src-tauri/tauri.conf.json / src-tauri/Cargo.toml / src-tauri/Cargo.lock
 # 2. 在 CHANGELOG.md 顶部加一节 "## x.y.z — 日期"
 # 3. 提交后打 tag
-git tag v1.2.2 && git push origin v1.2.2
+git tag v1.2.3 && git push origin v1.2.3
 ```
 
 > Release 正文取自 `CHANGELOG.md` 里与 tag 对应的那一节 —— 应用里「设置 → 更新日志」显示的就是它，
